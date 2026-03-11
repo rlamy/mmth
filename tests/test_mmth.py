@@ -1,223 +1,248 @@
 import pytest
 from mmth import dispatch
+from mmth.dispatch import Dispatcher
 
 
-class TestDispatcher:
-    def test_basic_dispatch(self):
-        @dispatch
-        def greet(name: str) -> str:
-            return f"Hello, {name}!"
+def test_basic_dispatch():
+    @dispatch
+    def greet(name: str) -> str:
+        return f"Hello, {name}!"
 
-        assert greet("World") == "Hello, World!"
+    assert greet("World") == "Hello, World!"
 
-    def test_register_variant(self):
-        @dispatch
-        def add(a: int, b: int) -> str:
-            return f"int + int: {a + b}"
 
-        @add.register(int, int)
-        def _(a: int, b: int) -> int:
-            return a + b
+def test_register_variant():
+    @dispatch
+    def add(a: int, b: int) -> str:
+        return f"int + int: {a + b}"
 
-        assert add(1, 2) == 3
+    @add.register(int, int)
+    def _(a: int, b: int) -> int:
+        return a + b
 
-    def test_inheritance_dispatch(self):
-        class Animal:
-            pass
+    assert add(1, 2) == 3
 
-        class Dog(Animal):
-            pass
 
-        @dispatch
-        def make_sound(animal: Animal) -> str:
-            return "Some sound"
+def test_inheritance_dispatch():
+    class Animal:
+        pass
 
-        @make_sound.register(Dog)
-        def _(dog: Dog) -> str:
-            return "Woof!"
+    class Dog(Animal):
+        pass
 
-        dog = Dog()
-        assert make_sound(dog) == "Woof!"
+    @dispatch
+    def make_sound(animal: Animal) -> str:
+        return "Some sound"
 
-    def test_no_match_raises_type_error(self):
-        from mmth.dispatch import Dispatcher
-        d = Dispatcher()
-        d.register(int)(lambda a: a * 2)
-        assert d(5) == 10
-        with pytest.raises(TypeError):
-            d("not an int")
+    @make_sound.register(Dog)
+    def _(dog: Dog) -> str:
+        return "Woof!"
 
-    def test_getitem_getter(self):
-        @dispatch
-        def add(a: int, b: int) -> int:
-            return a + b
+    dog = Dog()
+    assert make_sound(dog) == "Woof!"
 
-        @add.register(int, float)
-        def add_int_float(a: int, b: float) -> float:
-            return float(a) + b
 
-        impl = add[int, float]
-        assert impl(1, 2.0) == 3.0
+def test_no_match_raises_type_error():
+    d = Dispatcher()
+    d.register(int)(lambda a: a * 2)
+    assert d(5) == 10
+    with pytest.raises(TypeError):
+        d("not an int")
 
-    def test_setitem_setter(self):
-        @dispatch
-        def process(data: str) -> str:
-            return data.upper()
 
-        def custom_handler(data: dict) -> str:
-            return str(data)
+def test_getitem_getter():
+    @dispatch
+    def add(a: int, b: int) -> int:
+        return a + b
 
-        process[dict] = custom_handler
+    @add.register(int, float)
+    def add_int_float(a: int, b: float) -> float:
+        return float(a) + b
 
-        assert process("hello") == "HELLO"
-        assert process({"key": "value"}) == "{'key': 'value'}"
+    impl = add[int, float]
+    assert impl(1, 2.0) == 3.0
 
-    def test_getitem_after_setitem(self):
-        @dispatch
-        def process(data: str) -> str:
-            return data.upper()
 
-        def custom_handler(data: dict) -> str:
-            return str(data)
+def test_setitem_setter():
+    @dispatch
+    def process(data: str) -> str:
+        return data.upper()
 
-        process[dict] = custom_handler
-        handler = process[dict]
-        assert handler({"key": "value"}) == "{'key': 'value'}"
+    def custom_handler(data: dict) -> str:
+        return str(data)
 
-    def test_keyerror_on_missing_specialization(self):
-        @dispatch
-        def add(a: int, b: int) -> int:
-            return a + b
+    process[dict] = custom_handler
 
-        with pytest.raises(KeyError) as exc_info:
-            add[float, float]
-        assert "No specialization registered" in str(exc_info.value)
+    assert process("hello") == "HELLO"
+    assert process({"key": "value"}) == "{'key': 'value'}"
 
-    def test_ambiguity_detection(self):
-        class Animal:
-            pass
 
-        class Dog(Animal):
-            pass
+def test_getitem_after_setitem():
+    @dispatch
+    def process(data: str) -> str:
+        return data.upper()
 
-        @dispatch
-        def f(a: Animal, b: Animal) -> str:
-            return "Animal, Animal"
+    def custom_handler(data: dict) -> str:
+        return str(data)
 
-        @f.register(Dog, Animal)
-        def _(d: Dog, a: Animal) -> str:
-            return "Dog, Animal"
+    process[dict] = custom_handler
+    handler = process[dict]
+    assert handler({"key": "value"}) == "{'key': 'value'}"
 
-        @f.register(Animal, Dog)
-        def _(a: Animal, d: Dog) -> str:
-            return "Animal, Dog"
 
-        with pytest.raises(TypeError) as exc_info:
-            f(Dog(), Dog())
-        assert "Ambiguous dispatch" in str(exc_info.value)
+def test_keyerror_on_missing_specialization():
+    @dispatch
+    def add(a: int, b: int) -> int:
+        return a + b
 
-    def test_default_fallback_no_variants(self):
-        @dispatch
-        def add(a: int, b: int) -> int:
-            return a + b
+    with pytest.raises(KeyError) as exc_info:
+        add[float, float]
+    assert "No specialization registered" in str(exc_info.value)
 
-        assert add(1, 2) == 3
-        assert add("a", "b") == "ab"
 
-    def test_default_fallback_with_variants(self):
-        @dispatch
-        def add(a: int, b: int) -> int:
-            return a + b
+def test_ambiguity_detection():
+    class Animal:
+        pass
 
-        @add.register(int, float)
-        def add_int_float(a: int, b: float) -> float:
-            return float(a) + b
+    class Dog(Animal):
+        pass
 
-        assert add(1, 2) == 3
-        assert add(1, 2.0) == 3.0
+    @dispatch
+    def f(a: Animal, b: Animal) -> str:
+        return "Animal, Animal"
 
-    def test_no_implementation_at_all(self):
-        from mmth.dispatch import Dispatcher
+    @f.register(Dog, Animal)
+    def _(d: Dog, a: Animal) -> str:
+        return "Dog, Animal"
 
-        d = Dispatcher()
-        d.register(int)(lambda a: a * 2)
+    @f.register(Animal, Dog)
+    def _(a: Animal, d: Dog) -> str:
+        return "Animal, Dog"
 
-        with pytest.raises(TypeError) as exc_info:
-            d("str")
-        assert "No matching variant" in str(exc_info.value)
+    with pytest.raises(TypeError) as exc_info:
+        f(Dog(), Dog())
+    assert "Ambiguous dispatch" in str(exc_info.value)
 
-    def test_single_type_shorthand(self):
-        @dispatch
-        def double(x: int) -> int:
-            return x * 2
 
-        @double.register(float)
-        def double_float(x: float) -> float:
-            return x * 2.0
+def test_default_fallback_no_variants():
+    @dispatch
+    def add(a: int, b: int) -> int:
+        return a + b
 
-        impl = double[int]
-        assert impl(5) == 10
+    assert add(1, 2) == 3
+    assert add("a", "b") == "ab"
 
-        impl_float = double[float]
-        assert impl_float(3.0) == 6.0
 
-    def test_most_specialized_wins(self):
-        class Animal:
-            pass
+def test_default_fallback_with_variants():
+    @dispatch
+    def add(a: int, b: int) -> int:
+        return a + b
 
-        class Dog(Animal):
-            pass
+    @add.register(int, float)
+    def add_int_float(a: int, b: float) -> float:
+        return float(a) + b
 
-        @dispatch
-        def f(a: Animal) -> str:
-            return "Animal"
+    assert add(1, 2) == 3
+    assert add(1, 2.0) == 3.0
 
-        @f.register(Animal)
-        def f_animal(a: Animal) -> str:
-            return "Animal"
 
-        @f.register(Dog)
-        def f_dog(a: Dog) -> str:
-            return "Dog"
+def test_no_implementation_at_all():
+    d = Dispatcher()
+    d.register(int)(lambda a: a * 2)
 
-        dog = Dog()
-        assert f(dog) == "Dog"
-        assert f(Animal()) == "Animal"
+    with pytest.raises(TypeError) as exc_info:
+        d("str")
+    assert "No matching variant" in str(exc_info.value)
 
-    def test_exact_match_beats_inheritance(self):
-        class Animal:
-            pass
 
-        class Dog(Animal):
-            pass
+def test_single_type_shorthand():
+    @dispatch
+    def double(x: int) -> int:
+        return x * 2
 
-        @dispatch
-        def f(a: Animal) -> str:
-            return "Animal"
+    @double.register(float)
+    def double_float(x: float) -> float:
+        return x * 2.0
 
-        @f.register(Dog)
-        def f_dog(a: Dog) -> str:
-            return "Dog"
+    impl = double[int]
+    assert impl(5) == 10
 
-        dog = Dog()
-        assert f(dog) == "Dog"
+    impl_float = double[float]
+    assert impl_float(3.0) == 6.0
 
-    def test_getitem_returns_default(self):
-        @dispatch
-        def add(a: int, b: int) -> int:
-            return a + b
 
-        impl = add[int, int]
-        assert impl(1, 2) == 3
+def test_most_specialized_wins():
+    class Animal:
+        pass
 
-    def test_setitem_returns_none(self):
-        @dispatch
-        def foo(a: int) -> int:
-            return a
+    class Dog(Animal):
+        pass
 
-        class SetTracker:
-            pass
-        
-        tracker = SetTracker()
-        foo[int, int] = tracker
-        assert foo._registry[(int, int)] is tracker
+    @dispatch
+    def f(a: Animal) -> str:
+        return "Animal"
+
+    @f.register(Animal)
+    def f_animal(a: Animal) -> str:
+        return "Animal"
+
+    @f.register(Dog)
+    def f_dog(a: Dog) -> str:
+        return "Dog"
+
+    dog = Dog()
+    assert f(dog) == "Dog"
+    assert f(Animal()) == "Animal"
+
+
+def test_exact_match_beats_inheritance():
+    class Animal:
+        pass
+
+    class Dog(Animal):
+        pass
+
+    @dispatch
+    def f(a: Animal) -> str:
+        return "Animal"
+
+    @f.register(Dog)
+    def f_dog(a: Dog) -> str:
+        return "Dog"
+
+    dog = Dog()
+    assert f(dog) == "Dog"
+
+
+def test_getitem_returns_default():
+    @dispatch
+    def add(a: int, b: int) -> int:
+        return a + b
+
+    impl = add[int, int]
+    assert impl(1, 2) == 3
+
+
+def test_setitem_returns_none():
+    @dispatch
+    def foo(a: int) -> int:
+        return a
+
+    class SetTracker:
+        pass
+
+    tracker = SetTracker()
+    foo[int, int] = tracker
+    assert foo._registry[(int, int)] is tracker
+
+
+def test_default_fallback_with_unmatched_types():
+    @dispatch
+    def add(a: int, b: int) -> int:
+        return a + b
+
+    @add.register(int, float)
+    def add_int_float(a: int, b: float) -> float:
+        return float(a) + b
+
+    assert add("a", "b") == "ab"
