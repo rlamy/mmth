@@ -213,7 +213,32 @@ foo("str")  # TypeError: "No matching variant for types (<class 'str'>,)"
 
 ## Development
 
+Dev environments are managed with [uv](https://docs.astral.sh/uv/) for
+reproducibility: `uv.lock` pins the exact version of every dependency, and
+`.python-version` pins the interpreter used by default.
+
 ```bash
-pip install -e ".[dev]"
-pytest
+uv sync --extra dev   # creates .venv, installs locked deps
+uv run pytest
 ```
+
+`uv sync` reads `uv.lock`, so everyone (and CI) gets identical dependency
+versions. Re-run `uv lock` and commit the updated `uv.lock` whenever
+`pyproject.toml`'s dependencies change.
+
+### Running CI checks locally
+
+CI runs the test suite on Python 3.11-3.14 and PyPy 3.11, plus a lint job,
+via [tox](https://tox.wiki) (using the [tox-uv](https://github.com/tox-dev/tox-uv)
+plugin, so tox itself uses uv to create envs and can fetch missing
+interpreters). To run the exact same checks locally:
+
+```bash
+uv run tox            # test envs for every interpreter tox/uv can find or fetch, + lint
+uv run tox -e py312   # test a single interpreter
+uv run tox -e lint    # lint only
+```
+
+To test against a specific interpreter that isn't already on your machine,
+have uv fetch it first, e.g. `uv python install 3.14` or
+`uv python install pypy3.11`.

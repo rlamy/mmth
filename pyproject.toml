@@ -22,6 +22,9 @@ classifiers = [
 Homepage = "https://github.com/yourusername/mmth"
 Repository = "https://github.com/yourusername/mmth"
 
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "tox>=4", "tox-uv>=1"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

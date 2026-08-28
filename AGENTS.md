@@ -18,13 +18,20 @@ Guidelines for agents working in this repository.
 
 ### Development Setup
 
-```bash
-# Install in editable mode with dev dependencies
-pip install -e ".[dev]"
+Dependencies are managed with [uv](https://docs.astral.sh/uv/) and pinned in
+`uv.lock` for reproducibility; `.python-version` pins the default
+interpreter (3.12).
 
-# Or install directly
-pip install -e .
+```bash
+# Create .venv and install locked dev dependencies
+uv sync --extra dev
+
+# Run a command inside the environment
+uv run pytest
 ```
+
+After changing dependencies in `pyproject.toml`, run `uv lock` and commit
+the updated `uv.lock`.
 
 ### Testing
 
@@ -66,6 +73,20 @@ mypy src/
 
 # Run pyright (if installed)
 pyright src/
+```
+
+### CI (GitHub Actions)
+
+CI (`.github/workflows/ci.yml`) runs tests on Python 3.11, 3.12, 3.13, 3.14,
+and PyPy 3.11, plus a separate `ruff check` lint job. Each job installs uv,
+has uv fetch the matrix interpreter (`uv python install ...`), and runs
+tests through `tox` (`tox.ini`, using the `tox-uv` plugin) so the same
+commands reproduce locally:
+
+```bash
+uv run tox            # test envs for every interpreter tox/uv can find or fetch, + lint
+uv run tox -e py313    # test a single interpreter
+uv run tox -e lint     # lint only
 ```
 
 ---
@@ -240,14 +261,19 @@ Fixes #10.
 
 ```
 mmth/
+├── .github/workflows/
+│   └── ci.yml            # GitHub Actions CI
 ├── src/mmth/
-│   ├── __init__.py      # Public API exports
-│   └── dispatch.py      # Core implementation
+│   ├── __init__.py       # Public API exports
+│   └── dispatch.py       # Core implementation
 ├── tests/
-│   └── test_mmth.py     # Test suite
-├── pyproject.toml       # Project config
-├── README.md            # Documentation
-└── AGENTS.md           # This file
+│   └── test_mmth.py      # Test suite
+├── pyproject.toml        # Project config
+├── uv.lock               # Locked dependency versions (uv)
+├── .python-version       # Default interpreter pin (uv)
+├── tox.ini               # Test/lint envs (used locally and in CI)
+├── README.md             # Documentation
+└── AGENTS.md              # This file
 ```
 
 ---

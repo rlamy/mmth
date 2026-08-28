@@ -1,4 +1,5 @@
 import pytest
+
 from mmth import dispatch
 from mmth.dispatch import Dispatcher
 
