@@ -265,9 +265,11 @@ mmth/
 │   └── ci.yml            # GitHub Actions CI
 ├── src/mmth/
 │   ├── __init__.py       # Public API exports
-│   └── dispatch.py       # Core implementation
+│   ├── dispatch.py       # Core implementation (dispatch, Dispatcher)
+│   └── method.py         # Method dispatch (dispatchmethod, DispatchMethod)
 ├── tests/
-│   └── test_mmth.py      # Test suite
+│   ├── test_mmth.py      # dispatch/Dispatcher test suite
+│   └── test_method.py    # dispatchmethod/DispatchMethod test suite
 ├── pyproject.toml        # Project config
 ├── uv.lock               # Locked dependency versions (uv)
 ├── .python-version       # Default interpreter pin (uv)
@@ -306,3 +308,23 @@ add[str, str] = lambda a, b: f"{a}{b}"
 2. Inheritance-based match (most specific wins)
 3. Default fallback
 4. Error if no match and variants exist
+
+### Method Dispatch
+
+`dispatchmethod` is `dispatch` for use on a method: `self` is bound
+automatically and excluded from dispatch, so `.register(*types)` only
+needs the types of the remaining arguments. See README.md's "Method
+Dispatch" section for the full example, including using it to replace the
+Visitor pattern (dispatching straight on a node's type instead of an
+`accept()`/`visit_ElementType()` callback pair).
+
+```python
+class Evaluator:
+    @dispatchmethod
+    def visit(self, node: Expr):
+        raise TypeError(f"no visit for {type(node).__name__}")
+
+    @visit.register(Num)
+    def _(self, node):
+        return node.value
+```

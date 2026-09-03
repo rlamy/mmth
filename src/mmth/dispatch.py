@@ -78,27 +78,30 @@ class Dispatcher:
 
         return winner_func
 
-    def __call__(self, *args, **kwargs):
-        arg_types = tuple(type(arg) for arg in args)
-
+    def _resolve(self, arg_types):
+        """Find the implementation to call for the given argument types."""
         # 1. Exact match in registry
         if arg_types in self._registry:
-            return self._registry[arg_types](*args, **kwargs)
+            return self._registry[arg_types]
 
         # 2. Find most specialized via inheritance
         func = self._find_most_specialized(arg_types)
         if func is not None:
-            return func(*args, **kwargs)
+            return func
 
         # 3. Fall back to default (always callable regardless of types)
         if self._default is not None:
-            return self._default(*args, **kwargs)
+            return self._default
 
         # 4. No matching implementation
         if self._has_user_variants:
             raise TypeError(f"No matching variant for types {arg_types}")
 
         raise TypeError(f"No matching implementation for types {arg_types}")
+
+    def __call__(self, *args, **kwargs):
+        arg_types = tuple(type(arg) for arg in args)
+        return self._resolve(arg_types)(*args, **kwargs)
 
     def _match_signature(self, sig, types):
         if len(sig) != len(types):
