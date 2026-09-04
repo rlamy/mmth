@@ -1,6 +1,6 @@
 import pytest
 
-from mmth import DispatchMethod, dispatchmethod
+from mmth import Dispatcher, dispatchmethod
 
 
 class Node:
@@ -69,13 +69,13 @@ def test_dispatchmethod_generic_fallback_raises():
         Handler().visit(Unknown())
 
 
-def test_dispatchmethod_class_access_returns_dispatch_method():
+def test_dispatchmethod_class_access_returns_dispatcher():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
             return "default"
 
-    assert isinstance(Handler.visit, DispatchMethod)
+    assert isinstance(Handler.visit, Dispatcher)
 
 
 def test_dispatchmethod_setitem_and_getitem():

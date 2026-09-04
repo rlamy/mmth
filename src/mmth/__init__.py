@@ -1,4 +1,3 @@
-from mmth.dispatch import Dispatcher, dispatch
-from mmth.method import DispatchMethod, dispatchmethod
+from mmth.dispatch import Dispatcher, dispatch, dispatchmethod
 
-__all__ = ["dispatch", "Dispatcher", "dispatchmethod", "DispatchMethod"]
+__all__ = ["dispatch", "Dispatcher", "dispatchmethod"]

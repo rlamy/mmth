@@ -1,23 +1,29 @@
+import inspect
+from types import MethodType
+
+
 class Dispatcher:
-    def __init__(self, func=None):
+    def __init__(self, func=None, skip=0):
         self._registry = {}
         self._default = None
         self._has_user_variants = False
+        self._skip = skip
         if func is not None:
             self._default = func
-            import inspect
-            try:
-                sig = inspect.signature(func)
-                types = []
-                for param in sig.parameters.values():
-                    if param.annotation is not inspect.Parameter.empty:
-                        types.append(param.annotation)
-                    else:
-                        types.append(object)
-                if types:
-                    self._registry[tuple(types)] = func
-            except (ValueError, TypeError):
-                pass
+            types = self._param_types(func)
+            if types:
+                self._registry[types] = func
+
+    def _param_types(self, func):
+        """Infer a registry key from `func`'s annotations, past `self._skip`."""
+        try:
+            params = list(inspect.signature(func).parameters.values())
+        except (ValueError, TypeError):
+            return ()
+        return tuple(
+            p.annotation if p.annotation is not inspect.Parameter.empty else object
+            for p in params[self._skip:]
+        )
 
     def register(self, *types):
         if not types:
@@ -100,8 +106,13 @@ class Dispatcher:
         raise TypeError(f"No matching implementation for types {arg_types}")
 
     def __call__(self, *args, **kwargs):
-        arg_types = tuple(type(arg) for arg in args)
+        arg_types = tuple(type(arg) for arg in args[self._skip:])
         return self._resolve(arg_types)(*args, **kwargs)
+
+    def __get__(self, instance, owner=None):
+        if instance is None or self._skip == 0:
+            return self
+        return MethodType(self, instance)
 
     def _match_signature(self, sig, types):
         if len(sig) != len(types):
@@ -127,3 +138,30 @@ def dispatch(*types):
     if types and callable(types[0]) and not isinstance(types[0], type):
         return decorator(types[0])
     return decorator
+
+
+def dispatchmethod(func):
+    """Like `dispatch`, but decorates a method instead of a function.
+
+    `self` is bound automatically via the descriptor protocol and excluded
+    from dispatch, so `.register(*types)` only lists the types of the
+    remaining arguments.
+
+    ```python
+    class Evaluator:
+        @dispatchmethod
+        def visit(self, node: Node):
+            raise TypeError(f"no visit for {type(node).__name__}")
+
+        @visit.register(Num)
+        def _(self, node):
+            return node.value
+
+        @visit.register(Add)
+        def _(self, node):
+            return self.visit(node.left) + self.visit(node.right)
+    ```
+    """
+    if not callable(func) or isinstance(func, type):
+        raise TypeError("dispatchmethod expects a callable function")
+    return Dispatcher(func, skip=1)

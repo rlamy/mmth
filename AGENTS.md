@@ -188,7 +188,7 @@ if not types:
 - Private methods (starting with `_`) should be defined before public methods
 - Group related functionality together
 - Keep classes focused (single responsibility)
-- Maximum ~127 lines per file (current convention)
+- Maximum ~170 lines per file (current convention)
 
 ### Conditionals and Flow
 
@@ -265,11 +265,10 @@ mmth/
 │   └── ci.yml            # GitHub Actions CI
 ├── src/mmth/
 │   ├── __init__.py       # Public API exports
-│   ├── dispatch.py       # Core implementation (dispatch, Dispatcher)
-│   └── method.py         # Method dispatch (dispatchmethod, DispatchMethod)
+│   └── dispatch.py       # Core implementation (dispatch, Dispatcher, dispatchmethod)
 ├── tests/
 │   ├── test_mmth.py      # dispatch/Dispatcher test suite
-│   └── test_method.py    # dispatchmethod/DispatchMethod test suite
+│   └── test_method.py    # dispatchmethod test suite
 ├── pyproject.toml        # Project config
 ├── uv.lock               # Locked dependency versions (uv)
 ├── .python-version       # Default interpreter pin (uv)
