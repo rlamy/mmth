@@ -97,7 +97,7 @@ def test_dispatchmethod_rejects_non_callable():
         dispatchmethod(42)
 
 
-def test_dispatchmethod_subclass_can_override_one_case():
+def test_dispatchmethod_override_decorator_form():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
@@ -108,13 +108,11 @@ def test_dispatchmethod_subclass_can_override_one_case():
             return node.value
 
     class PickyHandler(Handler):
-        pass
-
-    @Handler.visit.register(PickyHandler, Num)
-    def _(self, node):
-        if node.value < 0:
-            raise ValueError("negative numbers not supported")
-        return Handler.visit[Num](self, node)
+        @Handler.visit.override(Num)
+        def visit(self, node):
+            if node.value < 0:
+                raise ValueError("negative numbers not supported")
+            return super().visit(node)
 
     assert Handler().visit(Num(5)) == 5
     assert PickyHandler().visit(Num(5)) == 5
@@ -124,3 +122,60 @@ def test_dispatchmethod_subclass_can_override_one_case():
     # unrelated node types and unrelated subclasses are unaffected
     assert Handler().visit(Add(Num(1), Num(2))) == "default"
     assert PickyHandler().visit(Add(Num(1), Num(2))) == "default"
+
+    # __set_name__ has replaced the pending override with a real Dispatcher
+    assert isinstance(PickyHandler.visit, Dispatcher)
+
+
+def test_dispatchmethod_override_declare_then_register_form():
+    class Handler:
+        @dispatchmethod
+        def visit(self, node: Node):
+            return "default"
+
+        @visit.register(Num)
+        def _(self, node):
+            return node.value
+
+    class PickyHandler(Handler):
+        visit = Handler.visit.override()
+
+        @visit.register(Num)
+        def _(self, node):
+            return node.value * 10
+
+        @visit.register(Add)
+        def _(self, node):
+            return "picky-add"
+
+    assert Handler().visit(Num(5)) == 5
+    assert PickyHandler().visit(Num(5)) == 50
+    assert PickyHandler().visit(Add(Num(1), Num(2))) == "picky-add"
+    # PickyHandler didn't register anything for other node types, so it
+    # still falls through to Handler's own default
+    assert PickyHandler().visit(Node()) == "default"
+
+
+def test_dispatchmethod_override_wins_regardless_of_relative_specificity():
+    # Handler registers the *narrower* type (Num); PickyHandler's override
+    # registers the *broader* one (Node). A plain multimethod comparing
+    # (PickyHandler, Node) against (Handler, Num) as peers would be
+    # ambiguous (neither type pair dominates the other) - but subclassing a
+    # dispatched method isn't standard multiple dispatch: PickyHandler's own
+    # table is tried first, in full, before ever falling back to Handler's.
+    class Handler:
+        @dispatchmethod
+        def visit(self, node: Node):
+            return "default"
+
+        @visit.register(Num)
+        def _(self, node):
+            return "handler-num"
+
+    class PickyHandler(Handler):
+        @Handler.visit.override(Node)
+        def visit(self, node):
+            return "picky-any"
+
+    assert Handler().visit(Num(1)) == "handler-num"
+    assert PickyHandler().visit(Num(1)) == "picky-any"

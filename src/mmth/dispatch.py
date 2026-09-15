@@ -3,44 +3,32 @@ from types import MethodType
 
 
 class Dispatcher:
-    def __init__(self, func=None, as_method=False):
+    def __init__(self, func=None, skip=0, parent=None):
         self._registry = {}
         self._default = None
         self._has_user_variants = False
-        self._as_method = as_method
-        self._arity = None
+        self._skip = skip
+        self._parent = parent
         if func is not None:
             self._default = func
-            try:
-                params = list(inspect.signature(func).parameters.values())
-                self._arity = len(params)
-            except (ValueError, TypeError):
-                params = []
-            types = tuple(
-                p.annotation if p.annotation is not inspect.Parameter.empty else object
-                for p in params
-            )
+            types = self._param_types(func)
             if types:
                 self._registry[types] = func
 
-    def _normalize(self, types):
-        """Turn `types` into a full-arity registry key.
-
-        A key shorter than the decorated default's arity is left-padded
-        with `object`, so a method's own class doesn't need to be spelled
-        out on every registration - only on the ones that actually narrow
-        it (e.g. to override a case for one particular subclass).
-        """
-        if not isinstance(types, tuple):
-            types = (types,)
-        if self._arity is not None and len(types) < self._arity:
-            types = (object,) * (self._arity - len(types)) + types
-        return types
+    def _param_types(self, func):
+        """Infer a registry key from `func`'s annotations, past `self._skip`."""
+        try:
+            params = list(inspect.signature(func).parameters.values())
+        except (ValueError, TypeError):
+            return ()
+        return tuple(
+            p.annotation if p.annotation is not inspect.Parameter.empty else object
+            for p in params[self._skip:]
+        )
 
     def register(self, *types):
         if not types:
             raise TypeError("register() requires at least one type argument")
-        types = self._normalize(types)
         self._has_user_variants = True
 
         def decorator(func):
@@ -49,14 +37,56 @@ class Dispatcher:
 
         return decorator
 
+    def override(self, *types):
+        """A dispatcher chained to this one, for a subclass to narrow a case
+        while inheriting everything else - unlike `.register()`, which adds
+        a peer entry compared against every other registration by
+        specificity, an overriding subclass's own dispatcher is always
+        tried first, in full, before falling through to this one. This
+        mirrors plain method overriding rather than standard multiple
+        dispatch: the subclass wins regardless of how its registered types
+        compare to the base class's.
+
+        With no arguments, returns the chained dispatcher directly, meant
+        to be assigned as the subclass's own attribute and then built up
+        with `.register(*types)`:
+
+            class Sub(Base):
+                visit = Base.visit.override()
+
+                @visit.register(SomeType)
+                def _(self, x): ...
+
+        With `*types`, acts as a decorator instead, for the common case of
+        narrowing a single case: the decorated method is installed as its
+        own chained override automatically, once Python calls
+        `__set_name__` on it at class-creation time - so it's a real method
+        of the subclass, and `super()` works normally:
+
+            class Sub(Base):
+                @Base.visit.override(SomeType)
+                def visit(self, x):
+                    ...
+                    return super().visit(x)
+        """
+        if not types:
+            return Dispatcher(skip=self._skip, parent=self)
+
+        def decorator(func):
+            return _PendingOverride(self, types, func)
+
+        return decorator
+
     def __getitem__(self, types):
-        types = self._normalize(types)
+        if not isinstance(types, tuple):
+            types = (types,)
         if types in self._registry:
             return self._registry[types]
         raise KeyError(f"No specialization registered for {types}")
 
     def __setitem__(self, types, func):
-        types = self._normalize(types)
+        if not isinstance(types, tuple):
+            types = (types,)
         self._registry[types] = func
         self._has_user_variants = True
         return None
@@ -106,22 +136,26 @@ class Dispatcher:
         if func is not None:
             return func
 
-        # 3. Fall back to default (always callable regardless of types)
+        # 3. Fall through to a parent dispatcher, if chained via `override()`
+        if self._parent is not None:
+            return self._parent._resolve(arg_types)
+
+        # 4. Fall back to default (always callable regardless of types)
         if self._default is not None:
             return self._default
 
-        # 4. No matching implementation
+        # 5. No matching implementation
         if self._has_user_variants:
             raise TypeError(f"No matching variant for types {arg_types}")
 
         raise TypeError(f"No matching implementation for types {arg_types}")
 
     def __call__(self, *args, **kwargs):
-        arg_types = tuple(type(arg) for arg in args)
+        arg_types = tuple(type(arg) for arg in args[self._skip:])
         return self._resolve(arg_types)(*args, **kwargs)
 
     def __get__(self, instance, owner=None):
-        if instance is None or not self._as_method:
+        if instance is None or self._skip == 0:
             return self
         return MethodType(self, instance)
 
@@ -136,13 +170,28 @@ class Dispatcher:
         return True
 
 
+class _PendingOverride:
+    """Placeholder returned by `Dispatcher.override(*types)` as a decorator;
+    replaces itself with a real, chained `Dispatcher` on the owning class
+    once Python calls `__set_name__` on it at class-creation time."""
+
+    def __init__(self, parent, types, func):
+        self._parent = parent
+        self._types = types
+        self._func = func
+
+    def __set_name__(self, owner, name):
+        dispatcher = self._parent.override()
+        dispatcher.register(*self._types)(self._func)
+        setattr(owner, name, dispatcher)
+
+
 def dispatch(*types):
     def decorator(func):
         if callable(func) and not isinstance(func, type):
             dispatcher = Dispatcher(func)
             if types and not callable(types[0]):
-                key = dispatcher._normalize(types)
-                dispatcher._registry[key] = func
+                dispatcher._registry[types] = func
                 dispatcher._has_user_variants = True
             return dispatcher
         raise TypeError("dispatch expects a callable function")
@@ -155,16 +204,13 @@ def dispatch(*types):
 def dispatchmethod(func):
     """Like `dispatch`, but decorates a method instead of a function.
 
-    `self` is bound automatically via the descriptor protocol, and
-    participates in dispatch like any other argument - but `.register(*types)`
-    only needs to list the types that actually narrow a case: any type left
-    unspecified (typically `self`, since most implementations apply
-    regardless of the concrete subclass) defaults to `object`, i.e. "matches
-    any type here". This makes a plain `.register(SomeType)` mean "for any
-    `self`, when the next argument is `SomeType`" - exactly like the examples
-    below - while a subclass can still narrow a specific case further by
-    registering directly on the base dispatcher with its own class spelled
-    out, e.g. `@Base.visit.register(Sub, SomeType)`.
+    `self` is bound automatically via the descriptor protocol and excluded
+    from dispatch, so `.register(*types)` only lists the types of the
+    remaining arguments.
+
+    A subclass can narrow a single case for itself, without touching the
+    base class, via `.override(...)` - see `Dispatcher.override` for the
+    two ways to use it.
 
     ```python
     class Evaluator:
@@ -183,4 +229,4 @@ def dispatchmethod(func):
     """
     if not callable(func) or isinstance(func, type):
         raise TypeError("dispatchmethod expects a callable function")
-    return Dispatcher(func, as_method=True)
+    return Dispatcher(func, skip=1)

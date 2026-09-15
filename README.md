@@ -205,13 +205,8 @@ foo("str")  # TypeError: "No matching variant for types (<class 'str'>,)"
 ### Method Dispatch
 
 `dispatchmethod` is `dispatch` for use on a method: `self` is bound
-automatically via the descriptor protocol. `self`'s type still
-participates in dispatch under the hood, but `.register(*types)` only
-needs to list the types that actually narrow a case - any type left
-unspecified (`self`, in the common case) defaults to `object`, i.e.
-"matches any type here" - so a plain `.register(SomeType)` reads exactly
-like ordinary single-dispatch: "for any `self`, when the next argument is
-`SomeType`".
+automatically via the descriptor protocol and excluded from dispatch, so
+`.register(*types)` only needs the types of the remaining arguments.
 
 ```python
 from mmth import dispatchmethod
@@ -273,32 +268,61 @@ class Evaluator:
 Evaluator().visit(Add(Num(1), Num(2)))  # 3
 ```
 
-Because `self`'s type is a real (if usually implicit) part of the dispatch
-key, a subclass can narrow a single case without touching the base
-class - register directly on the inherited dispatcher, spelling out the
-subclass this time instead of leaving it as the `object` wildcard:
+### Overriding One Case in a Subclass
+
+Subclassing a `dispatchmethod` isn't standard multiple dispatch: a subclass
+overriding one case should win *regardless* of how its registered type
+compares in specificity to what the base class registered - exactly like a
+plain method override, which doesn't care what a sibling method does.
+Comparing `self`'s type against the other arguments as peers (as `dispatch`
+does for genuine multi-argument dispatch) gets this wrong: if a subclass
+registers a *broader* type than the base class did, "most specific match
+wins" has no clear answer and either picks the wrong one or raises
+"ambiguous dispatch". `.override(...)` avoids this entirely, by not
+comparing the two at all - a subclass's own dispatcher is tried first, in
+full, before ever falling through to the base one:
 
 ```python
 class StrictEvaluator(Evaluator):
-    pass
-
-@Evaluator.visit.register(StrictEvaluator, Num)
-def _(self, node):
-    if node.value < 0:
-        raise ValueError("negative numbers not allowed")
-    return Evaluator.visit[Num](self, node)
+    @Evaluator.visit.override(Num)
+    def visit(self, node):
+        if node.value < 0:
+            raise ValueError("negative numbers not allowed")
+        return super().visit(node)
 
 Evaluator().visit(Num(-1))         # -1, unaffected
 StrictEvaluator().visit(Num(-1))   # ValueError: negative numbers not allowed
 ```
 
-`Evaluator.visit[Num]` (via `__getitem__`) fetches the base implementation
-directly, playing the role `super()` would play for a plain method
-override. Every other `Evaluator` subclass, and every other node type on
-`StrictEvaluator`, keeps using the base registrations unchanged - only the
-one `(StrictEvaluator, Num)` pair is affected, because mmth's usual
-specialization rules (most-specific-match-wins) apply across the `self`
-position exactly as they do across any other argument.
+`.override(*types)` installs the decorated method as a real method of
+`StrictEvaluator` (via `__set_name__`, at class-creation time), so
+`super()` works normally - it resolves to `Evaluator.visit`, the next
+`visit` up the MRO. Every other `Evaluator` subclass, and every other node
+type on `StrictEvaluator`, keeps using the base registrations unchanged.
+
+For more than one override in the same subclass, declare the chained
+dispatcher explicitly instead and build it up with `.register(*types)`,
+the same way you would for `dispatchmethod` itself:
+
+```python
+class StrictEvaluator(Evaluator):
+    visit = Evaluator.visit.override()
+
+    @visit.register(Num)
+    def _(self, node):
+        if node.value < 0:
+            raise ValueError("negative numbers not allowed")
+        return Evaluator.visit[Num](self, node)
+
+    @visit.register(Add)
+    def _(self, node):
+        ...
+```
+
+Here `Evaluator.visit[Num]` (via `__getitem__`) reaches the base
+implementation directly - `super()` isn't available on an anonymous `_`
+function, since it was never defined inside `StrictEvaluator`'s own class
+body.
 
 ---
 
