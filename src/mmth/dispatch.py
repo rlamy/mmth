@@ -37,7 +37,7 @@ class Dispatcher:
 
         return decorator
 
-    def override(self, *types):
+    def override(self):
         """A dispatcher chained to this one, for a subclass to narrow a case
         while inheriting everything else - unlike `.register()`, which adds
         a peer entry compared against every other registration by
@@ -47,35 +47,20 @@ class Dispatcher:
         dispatch: the subclass wins regardless of how its registered types
         compare to the base class's.
 
-        With no arguments, returns the chained dispatcher directly, meant
-        to be assigned as the subclass's own attribute and then built up
-        with `.register(*types)`:
+        Assign the result as the subclass's own attribute, then build it up
+        with `.register(*types)` same as `dispatchmethod` itself; a
+        registered function defined inside the subclass's body can still
+        call `super()` normally, since it's an ordinary method either way:
 
             class Sub(Base):
                 visit = Base.visit.override()
 
                 @visit.register(SomeType)
-                def _(self, x): ...
-
-        With `*types`, acts as a decorator instead, for the common case of
-        narrowing a single case: the decorated method is installed as its
-        own chained override automatically, once Python calls
-        `__set_name__` on it at class-creation time - so it's a real method
-        of the subclass, and `super()` works normally:
-
-            class Sub(Base):
-                @Base.visit.override(SomeType)
-                def visit(self, x):
+                def _(self, x):
                     ...
                     return super().visit(x)
         """
-        if not types:
-            return Dispatcher(skip=self._skip, parent=self)
-
-        def decorator(func):
-            return _PendingOverride(self, types, func)
-
-        return decorator
+        return Dispatcher(skip=self._skip, parent=self)
 
     def __getitem__(self, types):
         if not isinstance(types, tuple):
@@ -170,22 +155,6 @@ class Dispatcher:
         return True
 
 
-class _PendingOverride:
-    """Placeholder returned by `Dispatcher.override(*types)` as a decorator;
-    replaces itself with a real, chained `Dispatcher` on the owning class
-    once Python calls `__set_name__` on it at class-creation time."""
-
-    def __init__(self, parent, types, func):
-        self._parent = parent
-        self._types = types
-        self._func = func
-
-    def __set_name__(self, owner, name):
-        dispatcher = self._parent.override()
-        dispatcher.register(*self._types)(self._func)
-        setattr(owner, name, dispatcher)
-
-
 def dispatch(*types):
     def decorator(func):
         if callable(func) and not isinstance(func, type):
@@ -209,8 +178,7 @@ def dispatchmethod(func):
     remaining arguments.
 
     A subclass can narrow a single case for itself, without touching the
-    base class, via `.override(...)` - see `Dispatcher.override` for the
-    two ways to use it.
+    base class, via `.override()` - see `Dispatcher.override`.
 
     ```python
     class Evaluator:

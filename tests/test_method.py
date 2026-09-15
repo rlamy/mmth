@@ -97,7 +97,7 @@ def test_dispatchmethod_rejects_non_callable():
         dispatchmethod(42)
 
 
-def test_dispatchmethod_override_decorator_form():
+def test_dispatchmethod_override_narrows_one_case():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
@@ -108,8 +108,10 @@ def test_dispatchmethod_override_decorator_form():
             return node.value
 
     class PickyHandler(Handler):
-        @Handler.visit.override(Num)
-        def visit(self, node):
+        visit = Handler.visit.override()
+
+        @visit.register(Num)
+        def _(self, node):
             if node.value < 0:
                 raise ValueError("negative numbers not supported")
             return super().visit(node)
@@ -123,11 +125,8 @@ def test_dispatchmethod_override_decorator_form():
     assert Handler().visit(Add(Num(1), Num(2))) == "default"
     assert PickyHandler().visit(Add(Num(1), Num(2))) == "default"
 
-    # __set_name__ has replaced the pending override with a real Dispatcher
-    assert isinstance(PickyHandler.visit, Dispatcher)
 
-
-def test_dispatchmethod_override_declare_then_register_form():
+def test_dispatchmethod_override_can_narrow_more_than_one_case():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
@@ -173,8 +172,10 @@ def test_dispatchmethod_override_wins_regardless_of_relative_specificity():
             return "handler-num"
 
     class PickyHandler(Handler):
-        @Handler.visit.override(Node)
-        def visit(self, node):
+        visit = Handler.visit.override()
+
+        @visit.register(Node)
+        def _(self, node):
             return "picky-any"
 
     assert Handler().visit(Num(1)) == "handler-num"

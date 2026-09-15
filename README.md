@@ -278,31 +278,11 @@ Comparing `self`'s type against the other arguments as peers (as `dispatch`
 does for genuine multi-argument dispatch) gets this wrong: if a subclass
 registers a *broader* type than the base class did, "most specific match
 wins" has no clear answer and either picks the wrong one or raises
-"ambiguous dispatch". `.override(...)` avoids this entirely, by not
-comparing the two at all - a subclass's own dispatcher is tried first, in
-full, before ever falling through to the base one:
-
-```python
-class StrictEvaluator(Evaluator):
-    @Evaluator.visit.override(Num)
-    def visit(self, node):
-        if node.value < 0:
-            raise ValueError("negative numbers not allowed")
-        return super().visit(node)
-
-Evaluator().visit(Num(-1))         # -1, unaffected
-StrictEvaluator().visit(Num(-1))   # ValueError: negative numbers not allowed
-```
-
-`.override(*types)` installs the decorated method as a real method of
-`StrictEvaluator` (via `__set_name__`, at class-creation time), so
-`super()` works normally - it resolves to `Evaluator.visit`, the next
-`visit` up the MRO. Every other `Evaluator` subclass, and every other node
-type on `StrictEvaluator`, keeps using the base registrations unchanged.
-
-For more than one override in the same subclass, declare the chained
-dispatcher explicitly instead and build it up with `.register(*types)`,
-the same way you would for `dispatchmethod` itself:
+"ambiguous dispatch". `.override()` avoids this entirely, by not comparing
+the two at all - assign it as the subclass's own attribute, then build it
+up with `.register(*types)` exactly like `dispatchmethod` itself; the
+subclass's own dispatcher is always tried first, in full, before ever
+falling through to the base one:
 
 ```python
 class StrictEvaluator(Evaluator):
@@ -312,17 +292,18 @@ class StrictEvaluator(Evaluator):
     def _(self, node):
         if node.value < 0:
             raise ValueError("negative numbers not allowed")
-        return Evaluator.visit[Num](self, node)
+        return super().visit(node)
 
-    @visit.register(Add)
-    def _(self, node):
-        ...
+Evaluator().visit(Num(-1))         # -1, unaffected
+StrictEvaluator().visit(Num(-1))   # ValueError: negative numbers not allowed
 ```
 
-Here `Evaluator.visit[Num]` (via `__getitem__`) reaches the base
-implementation directly - `super()` isn't available on an anonymous `_`
-function, since it was never defined inside `StrictEvaluator`'s own class
-body.
+`super()` works normally here - it resolves to `Evaluator.visit`, the next
+`visit` up the MRO - because the registered function is still an ordinary
+method of `StrictEvaluator`, just like any other; `.override()` only
+changes which dispatcher `.register()` adds it to. Every other `Evaluator`
+subclass, and every other node type on `StrictEvaluator`, keeps using the
+base registrations unchanged.
 
 ---
 
