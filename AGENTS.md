@@ -268,7 +268,8 @@ mmth/
 │   └── multimethod.py    # Core implementation (dispatch, Multimethod, dispatchmethod)
 ├── tests/
 │   ├── test_mmth.py      # dispatch/Multimethod test suite
-│   └── test_method.py    # dispatchmethod test suite
+│   ├── test_method.py    # dispatchmethod test suite
+│   └── test_hypothesis.py # property-based specialization tests
 ├── pyproject.toml        # Project config
 ├── uv.lock               # Locked dependency versions (uv)
 ├── .python-version       # Default interpreter pin (uv)
