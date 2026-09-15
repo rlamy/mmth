@@ -1,7 +1,7 @@
 import itertools
 
 import pytest
-from hypothesis import given
+from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from mmth import Multimethod
@@ -236,3 +236,105 @@ def test_multi_arg_dispatch_raises_ambiguous_exactly_when_expected(data):
             assert len(maximal) > 1
             with pytest.raises(TypeError, match="Ambiguous dispatch"):
                 mm(*instances)
+
+
+@st.composite
+def _multi_inheritance_dag(draw, max_size=10, max_parents=3):
+    """A single argument's class hierarchy, but a DAG instead of a tree: each
+    node i > 0 gets 1..max_parents *direct* parents drawn from the earlier
+    nodes. To keep every generated class actually constructible:
+
+    - Python rejects a bases list where one base is already an ancestor of
+      another (no valid MRO from that alone), so direct parents are
+      filtered down to an antichain (mutually unrelated nodes) first -
+      diamonds are still very much possible deeper in the hierarchy, e.g.
+      two nodes that each have a single, different parent, both ultimately
+      descending from the same node further up; only a single class's own
+      *direct* bases are constrained this way.
+    - That alone isn't sufficient, though: two *different* classes sharing
+      some of the same (unrelated) ancestors, but listing them in opposite
+      orders, can each be individually fine while a later class combining
+      both as bases has no consistent MRO. Sorting every antichain by
+      descending node index rules out that specific case (any two nodes
+      that co-occur as *direct* bases somewhere always appear in the same
+      relative order), but a class can still end up with two ancestors in
+      conflicting order via two different *transitive* inheritance
+      paths - a single-inheritance chain can "drag in" an ancestor ahead
+      of another one that a sibling branch orders the other way, with
+      neither node ever appearing together as direct bases anywhere. The
+      test below discards those rare remaining cases via `assume(False)`
+      rather than trying to rule them out here too.
+    """
+    n = draw(st.integers(min_value=1, max_value=max_size))
+    parent_lists: list[list[int]] = [[] for _ in range(n)]
+    ancestors: list[frozenset] = [frozenset({0})]
+
+    for i in range(1, n):
+        k = draw(st.integers(min_value=1, max_value=min(max_parents, i)))
+        candidates = draw(
+            st.lists(
+                st.integers(min_value=0, max_value=i - 1),
+                min_size=1,
+                max_size=k,
+                unique=True,
+            )
+        )
+        parents: list[int] = []
+        for c in candidates:
+            if all(c not in ancestors[p] and p not in ancestors[c] for p in parents):
+                parents.append(c)
+        parents.sort(reverse=True)
+        parent_lists[i] = parents
+        ancestors.append(frozenset({i}).union(*(ancestors[p] for p in parents)))
+
+    registered = draw(st.sets(st.integers(min_value=0, max_value=n - 1)))
+    registered.add(0)
+    return parent_lists, ancestors, registered
+
+
+def _build_dag_classes(parent_lists):
+    classes = [type("Node0", (object,), {})]
+    for i in range(1, len(parent_lists)):
+        bases = tuple(classes[p] for p in parent_lists[i])
+        classes.append(type(f"Node{i}", bases, {}))
+    return classes
+
+
+def _maximal_registered_ancestors(node, registered, ancestors):
+    """Independent oracle, using the ancestor sets tracked alongside the DAG
+    itself (see `_multi_inheritance_dag`) rather than `issubclass`.
+    """
+    matching = [r for r in registered if r in ancestors[node]]
+    return [
+        r for r in matching if not any(r2 != r and r in ancestors[r2] for r2 in matching)
+    ]
+
+
+@given(_multi_inheritance_dag(), st.booleans())
+def test_dispatch_handles_multiple_inheritance(data, reverse_registration_order):
+    parent_lists, ancestors, registered = data
+    try:
+        classes = _build_dag_classes(parent_lists)
+    except TypeError:
+        # the descending-index ordering in _multi_inheritance_dag is meant
+        # to rule this out entirely; treat it as a belt-and-suspenders
+        # backstop rather than removing the check. assume(False) discards
+        # this example instead of failing the test on it.
+        assume(False)
+    mm = Multimethod()
+
+    # registration order shouldn't matter - this is exactly the axis a past
+    # bug in _find_most_specialized got wrong (see the ambiguity test above)
+    for i in sorted(registered, reverse=reverse_registration_order):
+        mm.register(classes[i])(lambda obj, i=i: i)
+
+    for node in range(len(classes)):
+        maximal = _maximal_registered_ancestors(node, registered, ancestors)
+        instance = classes[node]()
+
+        if len(maximal) == 1:
+            assert mm(instance) == maximal[0]
+        else:
+            assert len(maximal) > 1
+            with pytest.raises(TypeError, match="Ambiguous dispatch"):
+                mm(instance)
