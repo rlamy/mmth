@@ -113,18 +113,27 @@ class Multimethod:
         if not candidates:
             return None
 
-        winner_sig, winner_func = candidates[0]
+        # A candidate is a contender unless some *other* candidate dominates
+        # it - checking against every other candidate, not just a running
+        # "best so far", matters: two mutually-incomparable candidates
+        # encountered early don't make the call ambiguous if a later,
+        # more specific candidate dominates both of them.
+        maximal = [
+            (sig, func)
+            for sig, func in candidates
+            if not any(
+                other_sig != sig and self._is_more_specialized(other_sig, sig)
+                for other_sig, _ in candidates
+            )
+        ]
 
-        for sig, func in candidates[1:]:
-            if self._is_more_specialized(sig, winner_sig):
-                winner_sig, winner_func = sig, func
-            elif not self._is_more_specialized(winner_sig, sig):
-                raise TypeError(
-                    f"Ambiguous dispatch for types {types}: "
-                    f"matches multiple signatures"
-                )
+        if len(maximal) > 1:
+            raise TypeError(
+                f"Ambiguous dispatch for types {types}: "
+                f"matches multiple signatures"
+            )
 
-        return winner_func
+        return maximal[0][1]
 
     def _resolve(self, arg_types: tuple[type, ...]) -> Callable[..., Any]:
         """Find the implementation to call for the given argument types."""

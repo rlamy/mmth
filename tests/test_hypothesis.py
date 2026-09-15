@@ -1,5 +1,6 @@
 import itertools
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -136,3 +137,102 @@ def test_multi_arg_dispatch_picks_the_unique_most_derived_match(data):
         expected = _most_specific_match(chain, query, trees)
         instances = [class_lists[i][query[i]]() for i in range(arity)]
         assert mm(*instances) == expected
+
+
+@st.composite
+def _multi_arg_registrations(draw, min_arity=2, max_arity=3, max_tree_size=5, max_regs=8):
+    """Like `_multi_arg_chain`, but registrations form a *tree* rather than a
+    straight-line chain: each new signature narrows one position of some
+    *existing* registration (not necessarily the most recent one) to one of
+    its direct children. Two registrations extending the same base via
+    different positions are siblings - each strictly more specific than
+    their shared base, but incomparable with each other - deliberately
+    producing the "diamond" pattern that makes a query ambiguous.
+    """
+    arity = draw(st.integers(min_value=min_arity, max_value=max_arity))
+
+    trees = []
+    for _ in range(arity):
+        n = draw(st.integers(min_value=1, max_value=max_tree_size))
+        parents = [0] * n
+        children: list[list[int]] = [[] for _ in range(n)]
+        for i in range(1, n):
+            p = draw(st.integers(min_value=0, max_value=i - 1))
+            parents[i] = p
+            children[p].append(i)
+        trees.append((parents, children))
+
+    registrations = [tuple([0] * arity)]
+    num_new = draw(st.integers(min_value=0, max_value=max_regs))
+    for _ in range(num_new):
+        base = registrations[draw(st.integers(min_value=0, max_value=len(registrations) - 1))]
+        pos = draw(st.integers(min_value=0, max_value=arity - 1))
+        available = trees[pos][1][base[pos]]
+        if not available:
+            continue
+        child = available[draw(st.integers(min_value=0, max_value=len(available) - 1))]
+        new_sig = tuple(child if i == pos else base[i] for i in range(arity))
+        if new_sig in registrations:
+            continue
+        registrations.append(new_sig)
+
+    return trees, registrations
+
+
+def _dominates(sig_a, sig_b, trees):
+    """True if `sig_a` is strictly more specialized than `sig_b` - the same
+    rule as `Multimethod._is_more_specialized`, reimplemented independently
+    via tree walks instead of `issubclass`.
+    """
+    more_specific = False
+    for i in range(len(sig_a)):
+        parents = trees[i][0]
+        if _is_ancestor(sig_b[i], sig_a[i], parents):
+            if not _is_ancestor(sig_a[i], sig_b[i], parents):
+                more_specific = True
+        else:
+            return False
+    return more_specific
+
+
+def _maximal_matches(registrations, query, trees):
+    """Independent oracle: the registered signatures that match `query`
+    (are an ancestor of it in every position), filtered down to the ones
+    none of the others dominates. Dispatch should succeed, returning the
+    single survivor, when there's exactly one; and raise "Ambiguous
+    dispatch" when there's more than one.
+    """
+    matching = [
+        sig
+        for sig in registrations
+        if all(_is_ancestor(sig[i], query[i], trees[i][0]) for i in range(len(query)))
+    ]
+    return [
+        sig
+        for sig in matching
+        if not any(_dominates(other, sig, trees) for other in matching if other != sig)
+    ]
+
+
+@given(_multi_arg_registrations())
+def test_multi_arg_dispatch_raises_ambiguous_exactly_when_expected(data):
+    trees, registrations = data
+    arity = len(trees)
+    class_lists = [_build_classes(parents) for parents, _children in trees]
+    mm = Multimethod()
+
+    for sig in registrations:
+        types = tuple(class_lists[i][sig[i]] for i in range(arity))
+        mm.register(*types)(lambda *args, sig=sig: sig)
+
+    sizes = [len(cl) for cl in class_lists]
+    for query in itertools.product(*(range(s) for s in sizes)):
+        maximal = _maximal_matches(registrations, query, trees)
+        instances = [class_lists[i][query[i]]() for i in range(arity)]
+
+        if len(maximal) == 1:
+            assert mm(*instances) == maximal[0]
+        else:
+            assert len(maximal) > 1
+            with pytest.raises(TypeError, match="Ambiguous dispatch"):
+                mm(*instances)
