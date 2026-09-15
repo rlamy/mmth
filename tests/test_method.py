@@ -1,6 +1,6 @@
 import pytest
 
-from mmth import Dispatcher, dispatchmethod, override
+from mmth import Multimethod, dispatchmethod, override
 
 
 class Node:
@@ -69,13 +69,13 @@ def test_dispatchmethod_generic_fallback_raises():
         Handler().visit(Unknown())
 
 
-def test_dispatchmethod_class_access_returns_dispatcher():
+def test_dispatchmethod_class_access_returns_multimethod():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
             return "default"
 
-    assert isinstance(Handler.visit, Dispatcher)
+    assert isinstance(Handler.visit, Multimethod)
 
 
 def test_dispatchmethod_setitem_and_getitem():
@@ -182,7 +182,7 @@ def test_dispatchmethod_override_wins_regardless_of_relative_specificity():
     assert PickyHandler().visit(Num(1)) == "picky-any"
 
 
-def test_override_function_finds_base_dispatcher_automatically():
+def test_override_function_finds_base_multimethod_automatically():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
@@ -206,7 +206,7 @@ def test_override_function_finds_base_dispatcher_automatically():
     with pytest.raises(ValueError, match="negative numbers"):
         PickyHandler().visit(Num(-1))
     assert PickyHandler().visit(Add(Num(1), Num(2))) == "default"
-    assert isinstance(PickyHandler.visit, Dispatcher)
+    assert isinstance(PickyHandler.visit, Multimethod)
 
 
 def test_override_function_collects_multiple_registrations():

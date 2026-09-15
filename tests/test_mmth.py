@@ -1,7 +1,7 @@
 import pytest
 
 from mmth import dispatch
-from mmth.dispatch import Dispatcher
+from mmth.multimethod import Multimethod
 
 
 def test_basic_dispatch():
@@ -44,7 +44,7 @@ def test_inheritance_dispatch():
 
 
 def test_no_match_raises_type_error():
-    d = Dispatcher()
+    d = Multimethod()
     d.register(int)(lambda a: a * 2)
     assert d(5) == 10
     with pytest.raises(TypeError):
@@ -148,7 +148,7 @@ def test_default_fallback_with_variants():
 
 
 def test_no_implementation_at_all():
-    d = Dispatcher()
+    d = Multimethod()
     d.register(int)(lambda a: a * 2)
 
     with pytest.raises(TypeError) as exc_info:

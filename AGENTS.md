@@ -112,15 +112,15 @@ import inspect
 from typing import Any, Callable
 
 from mmth import dispatch
-from mmth.dispatch import Dispatcher
+from mmth.multimethod import Multimethod
 ```
 
 ### Naming Conventions
 
 | Element | Convention | Example |
 |---------|------------|---------|
-| Modules | lowercase | `dispatch.py` |
-| Classes | PascalCase | `class Dispatcher` |
+| Modules | lowercase | `multimethod.py` |
+| Classes | PascalCase | `class Multimethod` |
 | Functions | snake_case | `def dispatch()` |
 | Methods | snake_case | `def register()` |
 | Private | leading underscore | `_registry` |
@@ -265,9 +265,9 @@ mmth/
 │   └── ci.yml            # GitHub Actions CI
 ├── src/mmth/
 │   ├── __init__.py       # Public API exports
-│   └── dispatch.py       # Core implementation (dispatch, Dispatcher, dispatchmethod)
+│   └── multimethod.py    # Core implementation (dispatch, Multimethod, dispatchmethod)
 ├── tests/
-│   ├── test_mmth.py      # dispatch/Dispatcher test suite
+│   ├── test_mmth.py      # dispatch/Multimethod test suite
 │   └── test_method.py    # dispatchmethod test suite
 ├── pyproject.toml        # Project config
 ├── uv.lock               # Locked dependency versions (uv)
@@ -314,10 +314,10 @@ add[str, str] = lambda a, b: f"{a}{b}"
 automatically via the descriptor protocol and excluded from dispatch, so
 `.register(*types)` only needs the types of the remaining arguments. A
 subclass narrows one case for itself via `override()` (chains to a
-separate dispatcher, tried first, so the subclass always wins regardless
+separate multimethod, tried first, so the subclass always wins regardless
 of relative type specificity - unlike standard multiple dispatch) rather
 than `.register()` on the shared table; `override()` finds the base
-dispatcher itself via `__set_name__` (same lookup `super()` would do), or
+multimethod itself via `__set_name__` (same lookup `super()` would do), or
 use `Base.visit.override()` directly when that auto-lookup isn't what you
 want. See README.md's "Method Dispatch" and "Overriding One Case in a
 Subclass" sections for the full examples, including using `dispatchmethod`

@@ -12,7 +12,7 @@ pip install mmth
 
 ### Syntax
 
-#### 1. Define Dispatcher (Main Syntax)
+#### 1. Define Multimethod (Main Syntax)
 
 ```python
 @dispatch
@@ -281,7 +281,7 @@ wins" has no clear answer and either picks the wrong one or raises
 "ambiguous dispatch". `override()` avoids this entirely, by not comparing
 the two at all: assign it as the subclass's own attribute (under the same
 name the base class uses), then build it up with `.register(*types)`
-exactly like `dispatchmethod` itself. The subclass's own dispatcher is
+exactly like `dispatchmethod` itself. The subclass's own multimethod is
 always tried first, in full, before ever falling through to the base one:
 
 ```python
@@ -300,18 +300,18 @@ Evaluator().visit(Num(-1))         # -1, unaffected
 StrictEvaluator().visit(Num(-1))   # ValueError: negative numbers not allowed
 ```
 
-`override()` finds the base dispatcher itself - the same lookup `super()`
+`override()` finds the base multimethod itself - the same lookup `super()`
 would do, walking `StrictEvaluator`'s bases for a `visit` of their own -
 once Python calls `__set_name__` on it at class-creation time. `super()`
 works normally inside the registered function, because it's still an
 ordinary method of `StrictEvaluator`; `override()` only changes which
-dispatcher `.register()` adds it to. Every other `Evaluator` subclass, and
+multimethod `.register()` adds it to. Every other `Evaluator` subclass, and
 every other node type on `StrictEvaluator`, keeps using the base
 registrations unchanged.
 
-If the attribute name differs from the base's, or the dispatcher to chain
+If the attribute name differs from the base's, or the multimethod to chain
 to isn't the one plain attribute lookup would find, spell it out instead
-with `Base.visit.override()` (see `Dispatcher.override`) - `override()` is
+with `Base.visit.override()` (see `Multimethod.override`) - `override()` is
 just that, with the base found automatically for the common case.
 
 (On Python 3.11, an error raised while resolving `override()` - e.g. no

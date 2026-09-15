@@ -1,3 +1,3 @@
-from mmth.dispatch import Dispatcher, dispatch, dispatchmethod, override
+from mmth.multimethod import Multimethod, dispatch, dispatchmethod, override
 
-__all__ = ["dispatch", "Dispatcher", "dispatchmethod", "override"]
+__all__ = ["dispatch", "Multimethod", "dispatchmethod", "override"]

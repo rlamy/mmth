@@ -5,12 +5,12 @@ from types import MethodType
 from typing import Any, Callable
 
 
-class Dispatcher:
+class Multimethod:
     def __init__(
         self,
         func: Callable[..., Any] | None = None,
         skip: int = 0,
-        parent: Dispatcher | None = None,
+        parent: Multimethod | None = None,
     ) -> None:
         self._registry: dict[tuple[type, ...], Callable[..., Any]] = {}
         self._default: Callable[..., Any] | None = None
@@ -47,11 +47,11 @@ class Dispatcher:
 
         return decorator
 
-    def override(self) -> Dispatcher:
-        """A dispatcher chained to this one, for a subclass to narrow a case
+    def override(self) -> Multimethod:
+        """A multimethod chained to this one, for a subclass to narrow a case
         while inheriting everything else - unlike `.register()`, which adds
         a peer entry compared against every other registration by
-        specificity, an overriding subclass's own dispatcher is always
+        specificity, an overriding subclass's own multimethod is always
         tried first, in full, before falling through to this one. This
         mirrors plain method overriding rather than standard multiple
         dispatch: the subclass wins regardless of how its registered types
@@ -70,7 +70,7 @@ class Dispatcher:
                     ...
                     return super().visit(x)
         """
-        return Dispatcher(skip=self._skip, parent=self)
+        return Multimethod(skip=self._skip, parent=self)
 
     def __getitem__(self, types: type | tuple[type, ...]) -> Callable[..., Any]:
         if not isinstance(types, tuple):
@@ -137,7 +137,7 @@ class Dispatcher:
         if func is not None:
             return func
 
-        # 3. Fall through to a parent dispatcher, if chained via `override()`
+        # 3. Fall through to a parent multimethod, if chained via `override()`
         if self._parent is not None:
             return self._parent._resolve(arg_types)
 
@@ -173,7 +173,7 @@ class Dispatcher:
 
 class _PendingOverride:
     """Placeholder returned by `override()`; collects `.register(*types)`
-    calls, then replaces itself with a real `Dispatcher` - chained to
+    calls, then replaces itself with a real `Multimethod` - chained to
     whichever base class defines the same attribute name - once Python
     calls `__set_name__` on it at class-creation time."""
 
@@ -198,10 +198,10 @@ class _PendingOverride:
             if name in vars(base):
                 parent = vars(base)[name]
                 break
-        if not isinstance(parent, Dispatcher):
+        if not isinstance(parent, Multimethod):
             raise TypeError(
                 f"override(): no base class of {owner.__name__} defines a "
-                f"Dispatcher named {name!r}"
+                f"Multimethod named {name!r}"
             )
         dispatcher = parent.override()
         for types, func in self._registrations:
@@ -209,8 +209,8 @@ class _PendingOverride:
         setattr(owner, name, dispatcher)
 
 
-def override() -> Dispatcher:
-    """A dispatcher override for a subclass, with the base dispatcher found
+def override() -> Multimethod:
+    """A multimethod override for a subclass, with the base multimethod found
     automatically instead of spelled out: assign the result to the *same*
     attribute name the base class uses, and Python's own class-creation
     machinery (`__set_name__`) fills in the rest once the class body
@@ -226,14 +226,14 @@ def override() -> Dispatcher:
                 ...
                 return super().visit(x)
 
-    Equivalent to `Base.visit.override()` (see `Dispatcher.override`), for
-    the common case where the base dispatcher is simply inherited - use the
+    Equivalent to `Base.visit.override()` (see `Multimethod.override`), for
+    the common case where the base multimethod is simply inherited - use the
     explicit form instead if the name differs from the base's, or the base
     to chain to isn't the one plain attribute lookup would find.
     """
-    # Declared as returning Dispatcher (not _PendingOverride, its actual
+    # Declared as returning Multimethod (not _PendingOverride, its actual
     # runtime type here) so that type checkers accept both the assignment
-    # to an attribute overriding a Dispatcher-typed base one, and the
+    # to an attribute overriding a Multimethod-typed base one, and the
     # .register(*types) calls that follow - by the time anything other
     # than __set_name__ touches the attribute, it really has become one.
     # (The same kind of deliberate mismatch as dataclasses.field()'s.)
@@ -241,9 +241,9 @@ def override() -> Dispatcher:
 
 
 def dispatch(*types: Any) -> Any:
-    def decorator(func: Callable[..., Any]) -> Dispatcher:
+    def decorator(func: Callable[..., Any]) -> Multimethod:
         if callable(func) and not isinstance(func, type):
-            dispatcher = Dispatcher(func)
+            dispatcher = Multimethod(func)
             if types and not callable(types[0]):
                 dispatcher._registry[types] = func
                 dispatcher._has_user_variants = True
@@ -255,7 +255,7 @@ def dispatch(*types: Any) -> Any:
     return decorator
 
 
-def dispatchmethod(func: Callable[..., Any]) -> Dispatcher:
+def dispatchmethod(func: Callable[..., Any]) -> Multimethod:
     """Like `dispatch`, but decorates a method instead of a function.
 
     `self` is bound automatically via the descriptor protocol and excluded
@@ -263,7 +263,7 @@ def dispatchmethod(func: Callable[..., Any]) -> Dispatcher:
     remaining arguments.
 
     A subclass can narrow a single case for itself, without touching the
-    base class, via `override()` (see `override` and `Dispatcher.override`).
+    base class, via `override()` (see `override` and `Multimethod.override`).
 
     ```python
     class Evaluator:
@@ -282,4 +282,4 @@ def dispatchmethod(func: Callable[..., Any]) -> Dispatcher:
     """
     if not callable(func) or isinstance(func, type):
         raise TypeError("dispatchmethod expects a callable function")
-    return Dispatcher(func, skip=1)
+    return Multimethod(func, skip=1)
