@@ -278,15 +278,17 @@ Comparing `self`'s type against the other arguments as peers (as `dispatch`
 does for genuine multi-argument dispatch) gets this wrong: if a subclass
 registers a *broader* type than the base class did, "most specific match
 wins" has no clear answer and either picks the wrong one or raises
-"ambiguous dispatch". `.override()` avoids this entirely, by not comparing
-the two at all - assign it as the subclass's own attribute, then build it
-up with `.register(*types)` exactly like `dispatchmethod` itself; the
-subclass's own dispatcher is always tried first, in full, before ever
-falling through to the base one:
+"ambiguous dispatch". `override()` avoids this entirely, by not comparing
+the two at all: assign it as the subclass's own attribute (under the same
+name the base class uses), then build it up with `.register(*types)`
+exactly like `dispatchmethod` itself. The subclass's own dispatcher is
+always tried first, in full, before ever falling through to the base one:
 
 ```python
+from mmth import override
+
 class StrictEvaluator(Evaluator):
-    visit = Evaluator.visit.override()
+    visit = override()
 
     @visit.register(Num)
     def _(self, node):
@@ -298,12 +300,25 @@ Evaluator().visit(Num(-1))         # -1, unaffected
 StrictEvaluator().visit(Num(-1))   # ValueError: negative numbers not allowed
 ```
 
-`super()` works normally here - it resolves to `Evaluator.visit`, the next
-`visit` up the MRO - because the registered function is still an ordinary
-method of `StrictEvaluator`, just like any other; `.override()` only
-changes which dispatcher `.register()` adds it to. Every other `Evaluator`
-subclass, and every other node type on `StrictEvaluator`, keeps using the
-base registrations unchanged.
+`override()` finds the base dispatcher itself - the same lookup `super()`
+would do, walking `StrictEvaluator`'s bases for a `visit` of their own -
+once Python calls `__set_name__` on it at class-creation time. `super()`
+works normally inside the registered function, because it's still an
+ordinary method of `StrictEvaluator`; `override()` only changes which
+dispatcher `.register()` adds it to. Every other `Evaluator` subclass, and
+every other node type on `StrictEvaluator`, keeps using the base
+registrations unchanged.
+
+If the attribute name differs from the base's, or the dispatcher to chain
+to isn't the one plain attribute lookup would find, spell it out instead
+with `Base.visit.override()` (see `Dispatcher.override`) - `override()` is
+just that, with the base found automatically for the common case.
+
+(On Python 3.11, an error raised while resolving `override()` - e.g. no
+base class actually defines that name - arrives wrapped in a
+`RuntimeError` with the original exception as its `__cause__`, rather than
+directly; this is a difference in how CPython itself handles `__set_name__`
+failures across versions, not something mmth controls.)
 
 ---
 

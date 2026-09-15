@@ -155,6 +155,67 @@ class Dispatcher:
         return True
 
 
+class _PendingOverride:
+    """Placeholder returned by `override()`; collects `.register(*types)`
+    calls, then replaces itself with a real `Dispatcher` - chained to
+    whichever base class defines the same attribute name - once Python
+    calls `__set_name__` on it at class-creation time."""
+
+    def __init__(self):
+        self._registrations = []
+
+    def register(self, *types):
+        if not types:
+            raise TypeError("register() requires at least one type argument")
+
+        def decorator(func):
+            self._registrations.append((types, func))
+            return func
+
+        return decorator
+
+    def __set_name__(self, owner, name):
+        parent = None
+        for base in owner.__mro__[1:]:
+            if name in vars(base):
+                parent = vars(base)[name]
+                break
+        if not isinstance(parent, Dispatcher):
+            raise TypeError(
+                f"override(): no base class of {owner.__name__} defines a "
+                f"Dispatcher named {name!r}"
+            )
+        dispatcher = parent.override()
+        for types, func in self._registrations:
+            dispatcher.register(*types)(func)
+        setattr(owner, name, dispatcher)
+
+
+def override():
+    """A dispatcher override for a subclass, with the base dispatcher found
+    automatically instead of spelled out: assign the result to the *same*
+    attribute name the base class uses, and Python's own class-creation
+    machinery (`__set_name__`) fills in the rest once the class body
+    finishes, by looking up that name on the base classes - exactly the
+    lookup `super()` would do. Collect cases with `.register(*types)`
+    exactly like `dispatchmethod` itself:
+
+        class Sub(Base):
+            visit = override()
+
+            @visit.register(SomeType)
+            def _(self, x):
+                ...
+                return super().visit(x)
+
+    Equivalent to `Base.visit.override()` (see `Dispatcher.override`), for
+    the common case where the base dispatcher is simply inherited - use the
+    explicit form instead if the name differs from the base's, or the base
+    to chain to isn't the one plain attribute lookup would find.
+    """
+    return _PendingOverride()
+
+
 def dispatch(*types):
     def decorator(func):
         if callable(func) and not isinstance(func, type):
@@ -178,7 +239,7 @@ def dispatchmethod(func):
     remaining arguments.
 
     A subclass can narrow a single case for itself, without touching the
-    base class, via `.override()` - see `Dispatcher.override`.
+    base class, via `override()` (see `override` and `Dispatcher.override`).
 
     ```python
     class Evaluator:

@@ -1,6 +1,6 @@
 import pytest
 
-from mmth import Dispatcher, dispatchmethod
+from mmth import Dispatcher, dispatchmethod, override
 
 
 class Node:
@@ -180,3 +180,65 @@ def test_dispatchmethod_override_wins_regardless_of_relative_specificity():
 
     assert Handler().visit(Num(1)) == "handler-num"
     assert PickyHandler().visit(Num(1)) == "picky-any"
+
+
+def test_override_function_finds_base_dispatcher_automatically():
+    class Handler:
+        @dispatchmethod
+        def visit(self, node: Node):
+            return "default"
+
+        @visit.register(Num)
+        def _(self, node):
+            return node.value
+
+    class PickyHandler(Handler):
+        visit = override()
+
+        @visit.register(Num)
+        def _(self, node):
+            if node.value < 0:
+                raise ValueError("negative numbers not supported")
+            return super().visit(node)
+
+    assert Handler().visit(Num(5)) == 5
+    assert PickyHandler().visit(Num(5)) == 5
+    with pytest.raises(ValueError, match="negative numbers"):
+        PickyHandler().visit(Num(-1))
+    assert PickyHandler().visit(Add(Num(1), Num(2))) == "default"
+    assert isinstance(PickyHandler.visit, Dispatcher)
+
+
+def test_override_function_collects_multiple_registrations():
+    class Handler:
+        @dispatchmethod
+        def visit(self, node: Node):
+            return "default"
+
+    class PickyHandler(Handler):
+        visit = override()
+
+        @visit.register(Num)
+        def _(self, node):
+            return "picky-num"
+
+        @visit.register(Add)
+        def _(self, node):
+            return "picky-add"
+
+    assert PickyHandler().visit(Num(1)) == "picky-num"
+    assert PickyHandler().visit(Add(Num(1), Num(2))) == "picky-add"
+    assert PickyHandler().visit(Node()) == "default"
+
+
+def test_override_function_raises_without_a_matching_base():
+    # exercise __set_name__ directly rather than via a real class statement:
+    # CPython wraps __set_name__ exceptions in a RuntimeError on some
+    # versions (and not others), which isn't what this test cares about.
+    pending = override()
+
+    class Orphan:
+        pass
+
+    with pytest.raises(TypeError, match="no base class of Orphan"):
+        pending.__set_name__(Orphan, "visit")

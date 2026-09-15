@@ -313,14 +313,16 @@ add[str, str] = lambda a, b: f"{a}{b}"
 `dispatchmethod` is `dispatch` for use on a method: `self` is bound
 automatically via the descriptor protocol and excluded from dispatch, so
 `.register(*types)` only needs the types of the remaining arguments. A
-subclass narrows one case for itself via `.override()` (chains to a
+subclass narrows one case for itself via `override()` (chains to a
 separate dispatcher, tried first, so the subclass always wins regardless
 of relative type specificity - unlike standard multiple dispatch) rather
-than `.register()` on the shared table. See README.md's "Method Dispatch"
-and "Overriding One Case in a Subclass" sections for the full examples,
-including using `dispatchmethod` to replace the Visitor pattern
-(dispatching straight on a node's type instead of an
-`accept()`/`visit_ElementType()` callback pair).
+than `.register()` on the shared table; `override()` finds the base
+dispatcher itself via `__set_name__` (same lookup `super()` would do), or
+use `Base.visit.override()` directly when that auto-lookup isn't what you
+want. See README.md's "Method Dispatch" and "Overriding One Case in a
+Subclass" sections for the full examples, including using `dispatchmethod`
+to replace the Visitor pattern (dispatching straight on a node's type
+instead of an `accept()`/`visit_ElementType()` callback pair).
 
 ```python
 class Evaluator:
