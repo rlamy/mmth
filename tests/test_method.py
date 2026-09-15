@@ -95,3 +95,32 @@ def test_dispatchmethod_setitem_and_getitem():
 def test_dispatchmethod_rejects_non_callable():
     with pytest.raises(TypeError):
         dispatchmethod(42)
+
+
+def test_dispatchmethod_subclass_can_override_one_case():
+    class Handler:
+        @dispatchmethod
+        def visit(self, node: Node):
+            return "default"
+
+        @visit.register(Num)
+        def _(self, node):
+            return node.value
+
+    class PickyHandler(Handler):
+        pass
+
+    @Handler.visit.register(PickyHandler, Num)
+    def _(self, node):
+        if node.value < 0:
+            raise ValueError("negative numbers not supported")
+        return Handler.visit[Num](self, node)
+
+    assert Handler().visit(Num(5)) == 5
+    assert PickyHandler().visit(Num(5)) == 5
+    with pytest.raises(ValueError, match="negative numbers"):
+        PickyHandler().visit(Num(-1))
+
+    # unrelated node types and unrelated subclasses are unaffected
+    assert Handler().visit(Add(Num(1), Num(2))) == "default"
+    assert PickyHandler().visit(Add(Num(1), Num(2))) == "default"

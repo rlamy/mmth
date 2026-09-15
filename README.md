@@ -205,8 +205,13 @@ foo("str")  # TypeError: "No matching variant for types (<class 'str'>,)"
 ### Method Dispatch
 
 `dispatchmethod` is `dispatch` for use on a method: `self` is bound
-automatically via the descriptor protocol and excluded from dispatch, so
-`.register(*types)` only needs the types of the remaining arguments.
+automatically via the descriptor protocol. `self`'s type still
+participates in dispatch under the hood, but `.register(*types)` only
+needs to list the types that actually narrow a case - any type left
+unspecified (`self`, in the common case) defaults to `object`, i.e.
+"matches any type here" - so a plain `.register(SomeType)` reads exactly
+like ordinary single-dispatch: "for any `self`, when the next argument is
+`SomeType`".
 
 ```python
 from mmth import dispatchmethod
@@ -267,6 +272,33 @@ class Evaluator:
 
 Evaluator().visit(Add(Num(1), Num(2)))  # 3
 ```
+
+Because `self`'s type is a real (if usually implicit) part of the dispatch
+key, a subclass can narrow a single case without touching the base
+class - register directly on the inherited dispatcher, spelling out the
+subclass this time instead of leaving it as the `object` wildcard:
+
+```python
+class StrictEvaluator(Evaluator):
+    pass
+
+@Evaluator.visit.register(StrictEvaluator, Num)
+def _(self, node):
+    if node.value < 0:
+        raise ValueError("negative numbers not allowed")
+    return Evaluator.visit[Num](self, node)
+
+Evaluator().visit(Num(-1))         # -1, unaffected
+StrictEvaluator().visit(Num(-1))   # ValueError: negative numbers not allowed
+```
+
+`Evaluator.visit[Num]` (via `__getitem__`) fetches the base implementation
+directly, playing the role `super()` would play for a plain method
+override. Every other `Evaluator` subclass, and every other node type on
+`StrictEvaluator`, keeps using the base registrations unchanged - only the
+one `(StrictEvaluator, Num)` pair is affected, because mmth's usual
+specialization rules (most-specific-match-wins) apply across the `self`
+position exactly as they do across any other argument.
 
 ---
 

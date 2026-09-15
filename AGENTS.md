@@ -311,11 +311,15 @@ add[str, str] = lambda a, b: f"{a}{b}"
 ### Method Dispatch
 
 `dispatchmethod` is `dispatch` for use on a method: `self` is bound
-automatically and excluded from dispatch, so `.register(*types)` only
-needs the types of the remaining arguments. See README.md's "Method
-Dispatch" section for the full example, including using it to replace the
-Visitor pattern (dispatching straight on a node's type instead of an
-`accept()`/`visit_ElementType()` callback pair).
+automatically, and its type still participates in dispatch (defaulting to
+`object`, i.e. "any type", wherever `.register(*types)` leaves it
+unspecified), so a plain `.register(SomeType)` reads like ordinary
+single-dispatch while a subclass can still narrow one case by registering
+its own class explicitly on the inherited dispatcher. See README.md's
+"Method Dispatch" section for the full example, including using it to
+replace the Visitor pattern (dispatching straight on a node's type instead
+of an `accept()`/`visit_ElementType()` callback pair) and the subclass
+narrowing example.
 
 ```python
 class Evaluator:

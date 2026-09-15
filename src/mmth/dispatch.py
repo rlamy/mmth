@@ -3,31 +3,44 @@ from types import MethodType
 
 
 class Dispatcher:
-    def __init__(self, func=None, skip=0):
+    def __init__(self, func=None, as_method=False):
         self._registry = {}
         self._default = None
         self._has_user_variants = False
-        self._skip = skip
+        self._as_method = as_method
+        self._arity = None
         if func is not None:
             self._default = func
-            types = self._param_types(func)
+            try:
+                params = list(inspect.signature(func).parameters.values())
+                self._arity = len(params)
+            except (ValueError, TypeError):
+                params = []
+            types = tuple(
+                p.annotation if p.annotation is not inspect.Parameter.empty else object
+                for p in params
+            )
             if types:
                 self._registry[types] = func
 
-    def _param_types(self, func):
-        """Infer a registry key from `func`'s annotations, past `self._skip`."""
-        try:
-            params = list(inspect.signature(func).parameters.values())
-        except (ValueError, TypeError):
-            return ()
-        return tuple(
-            p.annotation if p.annotation is not inspect.Parameter.empty else object
-            for p in params[self._skip:]
-        )
+    def _normalize(self, types):
+        """Turn `types` into a full-arity registry key.
+
+        A key shorter than the decorated default's arity is left-padded
+        with `object`, so a method's own class doesn't need to be spelled
+        out on every registration - only on the ones that actually narrow
+        it (e.g. to override a case for one particular subclass).
+        """
+        if not isinstance(types, tuple):
+            types = (types,)
+        if self._arity is not None and len(types) < self._arity:
+            types = (object,) * (self._arity - len(types)) + types
+        return types
 
     def register(self, *types):
         if not types:
             raise TypeError("register() requires at least one type argument")
+        types = self._normalize(types)
         self._has_user_variants = True
 
         def decorator(func):
@@ -37,15 +50,13 @@ class Dispatcher:
         return decorator
 
     def __getitem__(self, types):
-        if not isinstance(types, tuple):
-            types = (types,)
+        types = self._normalize(types)
         if types in self._registry:
             return self._registry[types]
         raise KeyError(f"No specialization registered for {types}")
 
     def __setitem__(self, types, func):
-        if not isinstance(types, tuple):
-            types = (types,)
+        types = self._normalize(types)
         self._registry[types] = func
         self._has_user_variants = True
         return None
@@ -106,11 +117,11 @@ class Dispatcher:
         raise TypeError(f"No matching implementation for types {arg_types}")
 
     def __call__(self, *args, **kwargs):
-        arg_types = tuple(type(arg) for arg in args[self._skip:])
+        arg_types = tuple(type(arg) for arg in args)
         return self._resolve(arg_types)(*args, **kwargs)
 
     def __get__(self, instance, owner=None):
-        if instance is None or self._skip == 0:
+        if instance is None or not self._as_method:
             return self
         return MethodType(self, instance)
 
@@ -130,7 +141,8 @@ def dispatch(*types):
         if callable(func) and not isinstance(func, type):
             dispatcher = Dispatcher(func)
             if types and not callable(types[0]):
-                dispatcher._registry[types] = func
+                key = dispatcher._normalize(types)
+                dispatcher._registry[key] = func
                 dispatcher._has_user_variants = True
             return dispatcher
         raise TypeError("dispatch expects a callable function")
@@ -143,9 +155,16 @@ def dispatch(*types):
 def dispatchmethod(func):
     """Like `dispatch`, but decorates a method instead of a function.
 
-    `self` is bound automatically via the descriptor protocol and excluded
-    from dispatch, so `.register(*types)` only lists the types of the
-    remaining arguments.
+    `self` is bound automatically via the descriptor protocol, and
+    participates in dispatch like any other argument - but `.register(*types)`
+    only needs to list the types that actually narrow a case: any type left
+    unspecified (typically `self`, since most implementations apply
+    regardless of the concrete subclass) defaults to `object`, i.e. "matches
+    any type here". This makes a plain `.register(SomeType)` mean "for any
+    `self`, when the next argument is `SomeType`" - exactly like the examples
+    below - while a subclass can still narrow a specific case further by
+    registering directly on the base dispatcher with its own class spelled
+    out, e.g. `@Base.visit.register(Sub, SomeType)`.
 
     ```python
     class Evaluator:
@@ -164,4 +183,4 @@ def dispatchmethod(func):
     """
     if not callable(func) or isinstance(func, type):
         raise TypeError("dispatchmethod expects a callable function")
-    return Dispatcher(func, skip=1)
+    return Dispatcher(func, as_method=True)
