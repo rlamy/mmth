@@ -251,19 +251,29 @@ def _multi_inheritance_dag(draw, max_size=10, max_parents=3):
       two nodes that each have a single, different parent, both ultimately
       descending from the same node further up; only a single class's own
       *direct* bases are constrained this way.
-    - That alone isn't sufficient, though: two *different* classes sharing
-      some of the same (unrelated) ancestors, but listing them in opposite
-      orders, can each be individually fine while a later class combining
-      both as bases has no consistent MRO. Sorting every antichain by
-      descending node index rules out that specific case (any two nodes
-      that co-occur as *direct* bases somewhere always appear in the same
-      relative order), but a class can still end up with two ancestors in
-      conflicting order via two different *transitive* inheritance
-      paths - a single-inheritance chain can "drag in" an ancestor ahead
-      of another one that a sibling branch orders the other way, with
-      neither node ever appearing together as direct bases anywhere. The
-      test below discards those rare remaining cases via `assume(False)`
-      rather than trying to rule them out here too.
+    - That alone isn't sufficient, though. Sorting every antichain by
+      descending node index means two nodes that co-occur as *direct*
+      bases somewhere always appear in the same relative order - but a
+      single-inheritance chain doesn't get sorted, its internal MRO order
+      is just a fixed consequence of the chain, and that can silently
+      disagree with the sort order elsewhere. E.g.:
+
+          class N1(N0): pass
+          class N2(N0): pass          # unrelated; sort order: N2 before N1
+          class N3(N1): pass
+          class N4(N3, N2): pass      # bases correctly sorted (N3, N2)...
+          N4.__mro__  # ...N3, N1, N2...  <- N1 before N2 regardless!
+
+      N3's own chain forces N1 to immediately follow it in N4's MRO,
+      independent of any ordering choice. That alone doesn't error - it
+      only breaks if some *other* branch (e.g. `class N5(N2, N1)`, also
+      correctly sorted) independently fixes the opposite order for the
+      same pair, and a later class combines both as bases. Ruling that out
+      in general would mean constraining the whole generated DAG so no
+      chain's implied pairwise order ever conflicts with another branch's
+      - a much stronger property than "sort each class's own bases list".
+      The test below discards those rare remaining cases via
+      `assume(False)` instead.
     """
     n = draw(st.integers(min_value=1, max_value=max_size))
     parent_lists: list[list[int]] = [[] for _ in range(n)]
