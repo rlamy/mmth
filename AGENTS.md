@@ -269,6 +269,7 @@ mmth/
 ├── tests/
 │   ├── test_mmth.py      # dispatch/Multimethod test suite
 │   ├── test_method.py    # dispatchmethod test suite
+│   ├── test_abc.py       # dispatch with real/virtual/structural ABC subclasses
 │   └── test_hypothesis.py # property-based specialization tests
 ├── pyproject.toml        # Project config
 ├── uv.lock               # Locked dependency versions (uv)
