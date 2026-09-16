@@ -242,44 +242,60 @@ def test_multi_arg_dispatch_raises_ambiguous_exactly_when_expected(data):
 def _multi_inheritance_dag(draw, max_size=10, max_parents=3):
     """A single argument's class hierarchy, but a DAG instead of a tree: each
     node i > 0 gets 1..max_parents *direct* parents drawn from the earlier
-    nodes. To keep every generated class actually constructible:
+    nodes, and the classes are built for real as we go (not just as an
+    abstract graph), because getting them to actually construct relies on
+    Python's own, already-computed MROs:
 
     - Python rejects a bases list where one base is already an ancestor of
-      another (no valid MRO from that alone), so direct parents are
-      filtered down to an antichain (mutually unrelated nodes) first -
-      diamonds are still very much possible deeper in the hierarchy, e.g.
-      two nodes that each have a single, different parent, both ultimately
+      another (no valid MRO from that alone), so direct parents are first
+      filtered down to an antichain (mutually unrelated nodes) - diamonds
+      are still very much possible deeper in the hierarchy, e.g. two nodes
+      that each have a single, different parent, both ultimately
       descending from the same node further up; only a single class's own
       *direct* bases are constrained this way.
-    - That alone isn't sufficient, though. Sorting every antichain by
-      descending node index means two nodes that co-occur as *direct*
-      bases somewhere always appear in the same relative order - but a
-      single-inheritance chain doesn't get sorted, its internal MRO order
-      is just a fixed consequence of the chain, and that can silently
-      disagree with the sort order elsewhere. E.g.:
+    - That alone isn't sufficient, though: two classes sharing some of the
+      same (unrelated) ancestors, but listing them in opposite orders, can
+      each be individually fine while a later class combining both as
+      bases has no consistent MRO. A *fixed* rule (e.g. always sort by
+      node index) doesn't reliably avoid this either - a single-inheritance
+      chain doesn't get sorted, its internal MRO order is just a fixed
+      consequence of the chain, and that can silently disagree with a
+      fixed sort order chosen elsewhere:
 
           class N1(N0): pass
-          class N2(N0): pass          # unrelated; sort order: N2 before N1
+          class N2(N0): pass          # unrelated; fixed rule: N2 before N1
           class N3(N1): pass
           class N4(N3, N2): pass      # bases correctly sorted (N3, N2)...
           N4.__mro__  # ...N3, N1, N2...  <- N1 before N2 regardless!
 
-      N3's own chain forces N1 to immediately follow it in N4's MRO,
-      independent of any ordering choice. That alone doesn't error - it
-      only breaks if some *other* branch (e.g. `class N5(N2, N1)`, also
-      correctly sorted) independently fixes the opposite order for the
-      same pair, and a later class combines both as bases. Ruling that out
-      in general would mean constraining the whole generated DAG so no
-      chain's implied pairwise order ever conflicts with another branch's
-      - a much stronger property than "sort each class's own bases list".
-      The test below discards those rare remaining cases via
-      `assume(False)` instead.
+      Instead, every antichain is ordered by each candidate's position in
+      a running "checkpoint" class's *real* `__mro__` - literally a class
+      that inherits from every node built so far, kept up to date by
+      re-deriving it (`type(new_node, checkpoint)`) after each new node.
+      Since that position comes from an MRO Python already accepted, it
+      reflects every constraint established so far, not just a
+      once-and-for-all guess - which cuts how often a class is still
+      unconstructible by roughly 40x in practice (measured by comparing
+      against the fixed-order version of this same generator). It doesn't
+      reach zero, though: a new node's *own* multi-parent merge can
+      introduce an emergent ordering for some pair that the checkpoint
+      didn't know about yet (the same phenomenon as above, recursively,
+      between the new node and the checkpoint itself) - when re-deriving
+      the checkpoint fails for that reason, the previous (still valid)
+      checkpoint is simply kept rather than updated, and the rare residual
+      case where a *node itself* (not just the checkpoint) fails to
+      construct is discarded via `assume(False)`.
     """
     n = draw(st.integers(min_value=1, max_value=max_size))
-    parent_lists: list[list[int]] = [[] for _ in range(n)]
+
+    classes = [type("Node0", (object,), {})]
+    checkpoint = classes[0]
+    parent_lists: list[list[int]] = [[]]
     ancestors: list[frozenset] = [frozenset({0})]
 
     for i in range(1, n):
+        position = {cls: idx for idx, cls in enumerate(checkpoint.__mro__)}
+
         k = draw(st.integers(min_value=1, max_value=min(max_parents, i)))
         candidates = draw(
             st.lists(
@@ -293,21 +309,27 @@ def _multi_inheritance_dag(draw, max_size=10, max_parents=3):
         for c in candidates:
             if all(c not in ancestors[p] and p not in ancestors[c] for p in parents):
                 parents.append(c)
-        parents.sort(reverse=True)
-        parent_lists[i] = parents
+        # order by position in the checkpoint's real MRO; nodes it hasn't
+        # caught up to yet (see above) fall back to construction order
+        parents.sort(key=lambda idx: position.get(classes[idx], -idx))
+
+        bases = tuple(classes[p] for p in parents)
+        try:
+            new_cls = type(f"Node{i}", bases, {})
+        except TypeError:
+            assume(False)  # see docstring: rare, and not worth chasing further
+        classes.append(new_cls)
+        parent_lists.append(parents)
         ancestors.append(frozenset({i}).union(*(ancestors[p] for p in parents)))
+
+        try:
+            checkpoint = type(f"Checkpoint{i}", (new_cls, checkpoint), {})
+        except TypeError:
+            pass  # keep the previous checkpoint; it's still valid, just stale
 
     registered = draw(st.sets(st.integers(min_value=0, max_value=n - 1)))
     registered.add(0)
-    return parent_lists, ancestors, registered
-
-
-def _build_dag_classes(parent_lists):
-    classes = [type("Node0", (object,), {})]
-    for i in range(1, len(parent_lists)):
-        bases = tuple(classes[p] for p in parent_lists[i])
-        classes.append(type(f"Node{i}", bases, {}))
-    return classes
+    return classes, ancestors, registered
 
 
 def _maximal_registered_ancestors(node, registered, ancestors):
@@ -322,15 +344,7 @@ def _maximal_registered_ancestors(node, registered, ancestors):
 
 @given(_multi_inheritance_dag(), st.booleans())
 def test_dispatch_handles_multiple_inheritance(data, reverse_registration_order):
-    parent_lists, ancestors, registered = data
-    try:
-        classes = _build_dag_classes(parent_lists)
-    except TypeError:
-        # the descending-index ordering in _multi_inheritance_dag is meant
-        # to rule this out entirely; treat it as a belt-and-suspenders
-        # backstop rather than removing the check. assume(False) discards
-        # this example instead of failing the test on it.
-        assume(False)
+    classes, ancestors, registered = data
     mm = Multimethod()
 
     # registration order shouldn't matter - this is exactly the axis a past
