@@ -52,6 +52,17 @@ pytest -v
 pytest --cov=mmth --cov-report=term-missing
 ```
 
+### Benchmarks
+
+`tests/test_benchmarks.py` (via [pytest-benchmark](https://pytest-benchmark.readthedocs.io/))
+measures performance, not correctness, so it's excluded from the default
+`pytest`/`tox` run (`addopts = "-m 'not benchmark'"` in `pyproject.toml`):
+
+```bash
+pytest -m benchmark    # run only the benchmarks
+tox -e benchmark       # same, in an isolated tox env
+```
+
 ### Linting
 
 ```bash
@@ -87,6 +98,7 @@ commands reproduce locally:
 uv run tox            # test envs for every interpreter tox/uv can find or fetch, + lint
 uv run tox -e py313    # test a single interpreter
 uv run tox -e lint     # lint only
+uv run tox -e benchmark  # performance benchmarks (not part of the default envlist)
 ```
 
 ---
@@ -270,7 +282,8 @@ mmth/
 │   ├── test_mmth.py      # dispatch/Multimethod test suite
 │   ├── test_method.py    # dispatchmethod test suite
 │   ├── test_abc.py       # dispatch with real/virtual/structural ABC subclasses
-│   └── test_hypothesis.py # property-based specialization tests
+│   ├── test_hypothesis.py # property-based specialization tests
+│   └── test_benchmarks.py # pytest-benchmark performance benchmarks (excluded by default)
 ├── pyproject.toml        # Project config
 ├── uv.lock               # Locked dependency versions (uv)
 ├── .python-version       # Default interpreter pin (uv)
