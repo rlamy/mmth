@@ -327,9 +327,20 @@ def _multi_inheritance_dag(draw, max_size=10, max_parents=3):
         except TypeError:
             pass  # keep the previous checkpoint; it's still valid, just stale
 
-    registered = draw(st.sets(st.integers(min_value=0, max_value=n - 1)))
-    registered.add(0)
-    return classes, ancestors, registered
+    return classes, ancestors
+
+
+def _with_registered_subset(dag):
+    """Extend a `_multi_inheritance_dag()` result with a random subset of
+    nodes to register - always including the root, so every node has at
+    least one registered ancestor. Kept separate from the DAG generator
+    itself: which nodes get registered is the test's own concern, not a
+    property of the class hierarchy.
+    """
+    classes, ancestors = dag
+    return st.sets(st.integers(min_value=0, max_value=len(classes) - 1)).map(
+        lambda registered: (classes, ancestors, registered | {0})
+    )
 
 
 def _maximal_registered_ancestors(node, registered, ancestors):
@@ -342,7 +353,7 @@ def _maximal_registered_ancestors(node, registered, ancestors):
     ]
 
 
-@given(_multi_inheritance_dag(), st.booleans())
+@given(_multi_inheritance_dag().flatmap(_with_registered_subset), st.booleans())
 def test_dispatch_handles_multiple_inheritance(data, reverse_registration_order):
     classes, ancestors, registered = data
     mm = Multimethod()
