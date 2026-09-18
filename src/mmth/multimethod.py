@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import weakref
 from types import MethodType
 from typing import Any, Callable
 
@@ -17,6 +18,17 @@ class Multimethod:
         self._has_user_variants = False
         self._skip = skip
         self._parent = parent
+        # Resolving a signature against `_registry` (and, on a miss, the
+        # whole `_parent` chain) only depends on `arg_types` and the
+        # registry contents, so a successful resolution can be memoized by
+        # `arg_types` - this is what actually matters for real call sites,
+        # which call with the same concrete types over and over. Failed
+        # resolutions (ambiguous / no match) aren't cached, since raising
+        # is already the slow, cold path. `_children` lets a mutation here
+        # invalidate every override()-chained descendant's cache too, since
+        # those can fall through to this multimethod's registry.
+        self._cache: dict[tuple[type, ...], Callable[..., Any]] = {}
+        self._children: list[weakref.ReferenceType[Multimethod]] = []
         if func is not None:
             self._default = func
             types = self._param_types(func)
@@ -43,9 +55,20 @@ class Multimethod:
 
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             self._registry[types] = func
+            self._invalidate_cache()
             return func
 
         return decorator
+
+    def _invalidate_cache(self) -> None:
+        self._cache.clear()
+        alive = []
+        for ref in self._children:
+            child = ref()
+            if child is not None:
+                child._invalidate_cache()
+                alive.append(ref)
+        self._children = alive
 
     def override(self) -> Multimethod:
         """A multimethod chained to this one, for a subclass to narrow a case
@@ -70,7 +93,9 @@ class Multimethod:
                     ...
                     return super().visit(x)
         """
-        return Multimethod(skip=self._skip, parent=self)
+        child = Multimethod(skip=self._skip, parent=self)
+        self._children.append(weakref.ref(child))
+        return child
 
     def __getitem__(self, types: type | tuple[type, ...]) -> Callable[..., Any]:
         if not isinstance(types, tuple):
@@ -86,6 +111,7 @@ class Multimethod:
             types = (types,)
         self._registry[types] = func
         self._has_user_variants = True
+        self._invalidate_cache()
         return None
 
     def _is_more_specialized(
@@ -136,7 +162,17 @@ class Multimethod:
         return maximal[0][1]
 
     def _resolve(self, arg_types: tuple[type, ...]) -> Callable[..., Any]:
-        """Find the implementation to call for the given argument types."""
+        """Find the implementation to call for the given argument types,
+        memoized in `self._cache` (see `__init__`)."""
+        try:
+            return self._cache[arg_types]
+        except KeyError:
+            pass
+        func = self._resolve_uncached(arg_types)
+        self._cache[arg_types] = func
+        return func
+
+    def _resolve_uncached(self, arg_types: tuple[type, ...]) -> Callable[..., Any]:
         # 1. Exact match in registry
         if arg_types in self._registry:
             return self._registry[arg_types]

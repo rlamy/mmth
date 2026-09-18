@@ -247,3 +247,65 @@ def test_default_fallback_with_unmatched_types():
         return float(a) + b
 
     assert add("a", "b") == "ab"
+
+
+def test_cache_invalidated_by_later_registration():
+    # a later, more specific registration must win even for a type that was
+    # already dispatched (and so memoized) before that registration existed
+    class Animal:
+        pass
+
+    class Dog(Animal):
+        pass
+
+    @dispatch
+    def speak(a: Animal) -> str:
+        return "..."
+
+    dog = Dog()
+    assert speak(dog) == "..."  # caches the Animal fallback for (Dog,)
+
+    @speak.register(Dog)
+    def _(a: Dog) -> str:
+        return "Woof!"
+
+    assert speak(dog) == "Woof!"
+
+
+def test_cache_invalidated_across_override_chain():
+    # a mutation to the *parent* multimethod must invalidate an
+    # override()-chained child's cache too, since the child can fall
+    # through to the parent's registry
+    parent = Multimethod()
+    parent.register(object)(lambda x: "parent-default")
+    child = parent.override()
+
+    class Node:
+        pass
+
+    node = Node()
+    assert child(node) == "parent-default"  # caches the parent fallthrough
+
+    parent.register(Node)(lambda x: "parent-node")
+
+    assert child(node) == "parent-node"
+
+
+def test_repeated_calls_use_the_cache_consistently():
+    class Animal:
+        pass
+
+    class Dog(Animal):
+        pass
+
+    @dispatch
+    def speak(a: Animal) -> str:
+        return "..."
+
+    @speak.register(Dog)
+    def _(a: Dog) -> str:
+        return "Woof!"
+
+    dog = Dog()
+    for _ in range(5):
+        assert speak(dog) == "Woof!"

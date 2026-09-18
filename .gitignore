@@ -26,6 +26,7 @@ wheels/
 htmlcov/
 .tox/
 .nox/
+.benchmarks/
 
 .mypy_cache/
 .ruff_cache/

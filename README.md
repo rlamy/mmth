@@ -322,6 +322,18 @@ failures across versions, not something mmth controls.)
 
 ---
 
+### Performance: Resolution Caching
+
+Resolving a call's implementation (matching runtime types against the
+registry, and - on a miss - falling through `override()`'s parent chain)
+only depends on the argument types, so each `Multimethod` memoizes a
+successful resolution by argument types; a `register()`/`__setitem__()`
+call clears the cache, cascading to every `override()`-chained descendant
+(which can fall through to it). Failed resolutions (ambiguous / no match)
+aren't cached. This makes repeat calls with the same concrete types - the
+common case - essentially free after the first one, regardless of registry
+size or `override()` chain depth; see `tests/test_benchmarks.py`.
+
 ### Design Decisions
 
 1. **Return type annotations**: Not used in dispatch matching
