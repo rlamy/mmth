@@ -334,6 +334,16 @@ aren't cached. This makes repeat calls with the same concrete types - the
 common case - essentially free after the first one, regardless of registry
 size or `override()` chain depth; see `tests/test_benchmarks.py`.
 
+Once resolution itself was cached, building the cache key became the
+dominant remaining cost: a generator expression to compute `arg_types` from
+`*args` (needed in general, since a signature can have any arity) costs far
+more than the single `type()` call the overwhelmingly common one-dispatched-
+argument case actually needs - true of essentially every `dispatchmethod`
+call (`self` is skipped) and most `dispatch` functions. `__call__`
+fast-paths that case, which closes almost the entire remaining gap to
+`functools.singledispatch` (itself fixed at exactly one dispatch argument,
+so it never pays this cost at all).
+
 ### Design Decisions
 
 1. **Return type annotations**: Not used in dispatch matching

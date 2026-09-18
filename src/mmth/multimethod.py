@@ -197,7 +197,16 @@ class Multimethod:
         raise TypeError(f"No matching implementation for types {arg_types}")
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        arg_types = tuple(type(arg) for arg in args[self._skip:])
+        # The overwhelmingly common case - one dispatched argument, e.g.
+        # every `dispatchmethod` call (self is skipped) and most plain
+        # `dispatch` functions - is fast-pathed to avoid the generator
+        # expression below, which dominates the cost of an otherwise-cached
+        # call (building and driving a generator per call is far more
+        # expensive than one attribute-free `type()` call).
+        if len(args) - self._skip == 1:
+            arg_types = (type(args[self._skip]),)
+        else:
+            arg_types = tuple(type(arg) for arg in args[self._skip:])
         return self._resolve(arg_types)(*args, **kwargs)
 
     def __get__(self, instance: object | None, owner: type | None = None) -> Any:
