@@ -323,6 +323,10 @@ add[str, str] = lambda a, b: f"{a}{b}"
 3. Default fallback
 4. Error if no match and variants exist
 
+Each `Multimethod` memoizes a successful resolution by argument types,
+invalidated on `register()`/`__setitem__()` (cascading to `override()`
+descendants) - see README.md's "Performance: Resolution Caching".
+
 ### Method Dispatch
 
 `dispatchmethod` is `dispatch` for use on a method: `self` is bound
