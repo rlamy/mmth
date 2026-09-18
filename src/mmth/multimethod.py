@@ -26,8 +26,11 @@ class Multimethod:
         # resolutions (ambiguous / no match) aren't cached, since raising
         # is already the slow, cold path. `_children` lets a mutation here
         # invalidate every override()-chained descendant's cache too, since
-        # those can fall through to this multimethod's registry.
-        self._cache: dict[tuple[type, ...], Callable[..., Any]] = {}
+        # those can fall through to this multimethod's registry. Cache keys
+        # are a bare type for the common one-argument case (see `_resolve`)
+        # rather than always a one-element tuple, to avoid its allocation
+        # and (slightly more expensive) hashing on every call.
+        self._cache: dict[type | tuple[type, ...], Callable[..., Any]] = {}
         self._children: list[weakref.ReferenceType[Multimethod]] = []
         if func is not None:
             self._default = func
@@ -161,15 +164,18 @@ class Multimethod:
 
         return maximal[0][1]
 
-    def _resolve(self, arg_types: tuple[type, ...]) -> Callable[..., Any]:
-        """Find the implementation to call for the given argument types,
-        memoized in `self._cache` (see `__init__`)."""
+    def _resolve(self, key: type | tuple[type, ...]) -> Callable[..., Any]:
+        """Find the implementation to call for the given argument type(s),
+        memoized in `self._cache` (see `__init__`). `key` is a bare type
+        for the common single-argument case, or a tuple of types for
+        multi-argument dispatch."""
         try:
-            return self._cache[arg_types]
+            return self._cache[key]
         except KeyError:
             pass
+        arg_types = key if isinstance(key, tuple) else (key,)
         func = self._resolve_uncached(arg_types)
-        self._cache[arg_types] = func
+        self._cache[key] = func
         return func
 
     def _resolve_uncached(self, arg_types: tuple[type, ...]) -> Callable[..., Any]:
@@ -184,7 +190,10 @@ class Multimethod:
 
         # 3. Fall through to a parent multimethod, if chained via `override()`
         if self._parent is not None:
-            return self._parent._resolve(arg_types)
+            key: type | tuple[type, ...] = (
+                arg_types[0] if len(arg_types) == 1 else arg_types
+            )
+            return self._parent._resolve(key)
 
         # 4. Fall back to default (always callable regardless of types)
         if self._default is not None:
@@ -199,15 +208,17 @@ class Multimethod:
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         # The overwhelmingly common case - one dispatched argument, e.g.
         # every `dispatchmethod` call (self is skipped) and most plain
-        # `dispatch` functions - is fast-pathed to avoid the generator
-        # expression below, which dominates the cost of an otherwise-cached
-        # call (building and driving a generator per call is far more
-        # expensive than one attribute-free `type()` call).
+        # `dispatch` functions - is fast-pathed to avoid both the generator
+        # expression below (building and driving a generator per call is
+        # far more expensive than one attribute-free `type()` call) and
+        # wrapping that single type in a one-element tuple, which `_resolve`
+        # would otherwise need to allocate and hash on every call.
+        key: type | tuple[type, ...]
         if len(args) - self._skip == 1:
-            arg_types = (type(args[self._skip]),)
+            key = type(args[self._skip])
         else:
-            arg_types = tuple(type(arg) for arg in args[self._skip:])
-        return self._resolve(arg_types)(*args, **kwargs)
+            key = tuple(type(arg) for arg in args[self._skip:])
+        return self._resolve(key)(*args, **kwargs)
 
     def __get__(self, instance: object | None, owner: type | None = None) -> Any:
         if instance is None or self._skip == 0:
