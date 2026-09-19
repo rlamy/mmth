@@ -25,8 +25,10 @@ print(add(1, 2))     # 3 (int, int) -> default
 print(add(1, 2.0))  # 3.0 (int, float) -> specialized
 ```
 
-## Documentation
+## Where next
 
-Full documentation - specification, method dispatch, performance notes, API
-reference and development guide - is at https://mmth.readthedocs.io. The
-sources live in [`docs/`](docs/).
+- [Specification](specification.md): syntax, dispatch semantics, examples and error cases
+- [Methods](methods.md): `dispatchmethod` and overriding cases in subclasses
+- [Performance](performance.md): resolution caching and benchmarks
+- [API reference](reference.md)
+- [Development](development.md): dev setup, CI checks, building these docs

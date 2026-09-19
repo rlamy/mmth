@@ -21,6 +21,7 @@ classifiers = [
 [project.urls]
 Homepage = "https://github.com/yourusername/mmth"
 Repository = "https://github.com/yourusername/mmth"
+Documentation = "https://mmth.readthedocs.io"
 
 [project.optional-dependencies]
 dev = [
@@ -30,6 +31,11 @@ dev = [
     "ruff>=0.6",
     "tox>=4",
     "tox-uv>=1",
+]
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9",
+    "mkdocstrings[python]>=0.26",
 ]
 
 [tool.pytest.ini_options]

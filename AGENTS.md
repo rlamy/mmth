@@ -288,7 +288,10 @@ mmth/
 ├── uv.lock               # Locked dependency versions (uv)
 ├── .python-version       # Default interpreter pin (uv)
 ├── tox.ini               # Test/lint envs (used locally and in CI)
-├── README.md             # Documentation
+├── docs/                 # MkDocs sources (spec, methods, performance, API reference, development)
+├── mkdocs.yml            # MkDocs Material + mkdocstrings config
+├── .readthedocs.yaml     # Read the Docs build config
+├── README.md             # Landing page; links to the hosted docs
 └── AGENTS.md              # This file
 ```
 
@@ -325,7 +328,7 @@ add[str, str] = lambda a, b: f"{a}{b}"
 
 Each `Multimethod` memoizes a successful resolution by argument types,
 invalidated on `register()`/`__setitem__()` (cascading to `override()`
-descendants) - see README.md's "Performance: Resolution Caching".
+descendants) - see docs/performance.md.
 
 ### Method Dispatch
 
@@ -338,8 +341,8 @@ of relative type specificity - unlike standard multiple dispatch) rather
 than `.register()` on the shared table; `override()` finds the base
 multimethod itself via `__set_name__` (same lookup `super()` would do), or
 use `Base.visit.override()` directly when that auto-lookup isn't what you
-want. See README.md's "Method Dispatch" and "Overriding One Case in a
-Subclass" sections for the full examples, including using `dispatchmethod`
+want. See docs/methods.md ("Method Dispatch" and "Overriding One Case in a
+Subclass") for the full examples, including using `dispatchmethod`
 to replace the Visitor pattern (dispatching straight on a node's type
 instead of an `accept()`/`visit_ElementType()` callback pair).
 

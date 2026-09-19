@@ -1,0 +1,29 @@
+site_name: mmth
+site_description: A simple multiple-dispatch library for Python
+repo_url: https://github.com/yourusername/mmth
+strict: true
+
+theme:
+  name: material
+
+nav:
+  - Home: index.md
+  - Specification: specification.md
+  - Methods: methods.md
+  - Performance: performance.md
+  - API Reference: reference.md
+  - Development: development.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: false
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
