@@ -10,7 +10,6 @@ from types import MappingProxyType, MethodType, UnionType
 from typing import (
     Any,
     Callable,
-    TypeVar,
     Union,
     get_args,
     get_origin,
@@ -18,9 +17,13 @@ from typing import (
     overload,
 )
 
-# Unbound, unlike a `Callable` bound, so that `classmethod`/`staticmethod`
-# objects (not callable themselves) can be registered too.
-_F = TypeVar("_F")
+# What `register()` gives back for a registered implementation: deliberately
+# not its own precise type (as typeshed's `functools.singledispatch` stubs
+# do too), since implementations are conventionally all named `_`, and a
+# precise type makes a type checker compare a subclass's `_` against its base
+# class's (e.g. with `inherit()`) as if one overrode the other. `Any` rather
+# than `Callable`, since a `classmethod`/`staticmethod` isn't callable itself.
+_Registered = Any
 _TypeSpec = type | UnionType
 
 
@@ -223,13 +226,13 @@ class Multimethod:
     # The types-first order matters: a type is itself callable, so
     # `register(int)` would otherwise match the bare-decorator overload.
     @overload
-    def register(self, *types: _TypeSpec) -> Callable[[_F], _F]: ...
+    def register(self, *types: _TypeSpec) -> Callable[[Any], _Registered]: ...
     @overload
-    def register(self, func: _F, /) -> _F: ...
+    def register(self, func: Any, /) -> _Registered: ...
     @overload
-    def register(self, cls: _TypeSpec, func: _F, /) -> _F: ...
+    def register(self, cls: _TypeSpec, func: Any, /) -> _Registered: ...
     @overload
-    def register(self, *types: _TypeSpec, func: _F) -> _F: ...
+    def register(self, *types: _TypeSpec, func: Any) -> _Registered: ...
     def register(self, *types: Any, func: Any = None) -> Any:
         """Register an implementation, for the given types or, if none are
         given, its parameters' annotations (all of which must be types).
@@ -245,7 +248,7 @@ class Multimethod:
         if func is not None:
             return self.register(*types)(func)
 
-        def decorator(func: _F) -> _F:
+        def decorator(func: Any) -> _Registered:
             if not _is_function(func):
                 raise TypeError(f"register() expected a function, got {func!r}")
             self._register("register()", types, func)
