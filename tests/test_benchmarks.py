@@ -1,9 +1,4 @@
-"""Performance benchmarks, not correctness tests - excluded from the
-default `pytest`/`tox` run (see pyproject.toml's `addopts`). Run them with:
-
-    pytest -m benchmark
-    tox -e benchmark
-"""
+"""Performance benchmarks, excluded by default: run `pytest -m benchmark`."""
 
 import functools
 
@@ -68,10 +63,7 @@ def test_mmth_dispatch_one_level_of_inheritance(benchmark):
 
 @pytest.mark.parametrize("registry_size", [1, 10, 100])
 def test_mmth_dispatch_scaling_when_nothing_matches(benchmark, registry_size):
-    """Every registered type is unrelated to the call - the full registry
-    has to be scanned (via issubclass) before falling through to the
-    default, on every single call.
-    """
+    """Every registered type is unrelated to the call's."""
 
     @dispatch
     def handle(x: object) -> str:
@@ -89,13 +81,8 @@ def test_mmth_dispatch_scaling_when_nothing_matches(benchmark, registry_size):
 
 @pytest.mark.parametrize("chain_length", [1, 10, 100])
 def test_mmth_dispatch_scaling_when_everything_matches(benchmark, chain_length):
-    """A single-inheritance chain where *every* registered type is an
-    ancestor of the call type - the worst case for
-    Multimethod._find_most_specialized, which compares every matching
-    candidate against every other to find the unique maximal one. The
-    call type is an unregistered leaf below the whole chain, so this
-    can't shortcut through the exact-match case.
-    """
+    """Every registered type is an ancestor of the (unregistered) call
+    type: the worst case for `_find_most_specialized`."""
 
     @dispatch
     def handle(x: object) -> str:
@@ -115,10 +102,7 @@ def test_mmth_dispatch_scaling_when_everything_matches(benchmark, chain_length):
 
 @pytest.mark.parametrize("chain_depth", [1, 10, 100])
 def test_dispatchmethod_inherit_chain_depth(benchmark, chain_depth):
-    """`_resolve` falls through to `self._parent._resolve(...)` on a miss -
-    this measures how that cost scales with how many `.inherit()` levels
-    deep a call has to fall through before finding a match at the base.
-    """
+    """A call that falls through every `.inherit()` level to the base."""
 
     class Base:
         @dispatchmethod

@@ -176,6 +176,30 @@ def register(self, *types):
     ...
 ```
 
+### Comments
+
+These apply to comments and to private docstrings (public docstrings are
+the API reference, rendered by mkdocstrings):
+
+- Keep them short: a line or two, rarely more.
+- Explain *why*, never *how*: don't narrate what the code already says.
+- Write for any reader of the code: no history (past bugs, earlier
+  designs, benchmark numbers) that only the commit history explains.
+- Don't repeat what's already in `docs/` or a commit message; point to the
+  doc instead if needed (e.g. "see docs/performance.md").
+- In tests, don't restate the assertions or the test name.
+
+```python
+# Good - a reason the reader would otherwise miss
+# `__class__`, not `type()`, so proxies like `Mock(spec=cls)` dispatch as
+# that class.
+
+# Avoid - narrates the code
+# 1. Exact match in registry
+if arg_types in self._registry:
+    ...
+```
+
 ### Error Handling
 
 - Use specific exceptions (`TypeError`, `KeyError`, `ValueError`)

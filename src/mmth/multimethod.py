@@ -17,12 +17,8 @@ from typing import (
     overload,
 )
 
-# What `register()` gives back for a registered implementation: deliberately
-# not its own precise type (as typeshed's `functools.singledispatch` stubs
-# do too), since implementations are conventionally all named `_`, and a
-# precise type makes a type checker compare a subclass's `_` against its base
-# class's (e.g. with `inherit()`) as if one overrode the other. `Any` rather
-# than `Callable`, since a `classmethod`/`staticmethod` isn't callable itself.
+# Not the implementation's own type: implementations are all named `_`, so
+# type checkers would treat a subclass's `_` as overriding its base's.
 _Registered = Any
 _TypeSpec = type | UnionType
 
@@ -51,9 +47,8 @@ def _is_function(obj: Any) -> bool:
 def _parse_decorator_args(
     caller: str, args: tuple[Any, ...], func: Any = None
 ) -> tuple[tuple[Any, ...], Any]:
-    """Split `(*types, func)` - `func` given directly (bare `@f.register`,
-    or functools-style `f.register(cls, func)`) or as a keyword - from
-    `(*types,)` alone (`@f.register(*types)`, for a decorator)."""
+    """Split decorator arguments into `(types, func)`, with `func` None when
+    they're just types (`@f.register(*types)`)."""
     if func is None and args and _is_function(args[-1]):
         args, func = args[:-1], args[-1]
     for t in args:
@@ -68,11 +63,8 @@ def _expand_unions(types: tuple[Any, ...]) -> list[tuple[type, ...]]:
 
 
 class Multimethod:
-    # Slots for everything a call touches, so those lookups stay fast even
-    # though `functools.update_wrapper` adds arbitrary attributes (__name__,
-    # __doc__, ..., plus the function's own __dict__) to the instance -
-    # which otherwise stops instances sharing their dict's keys, and costs
-    # ~25% on every call.
+    # Slots keep calls fast despite update_wrapper's instance attributes
+    # (see docs/performance.md).
     __slots__ = (
         "_registry",
         "_default",
@@ -95,40 +87,22 @@ class Multimethod:
         _parent: Multimethod | None = None,
         _binds_class: bool = False,
     ) -> None:
-        # `_skip` (leading arguments excluded from dispatch, i.e. `self`),
-        # `_parent` (the `inherit()` chain) and `_binds_class` (a
-        # `classmethod` dispatchmethod, bound to the class even when looked
-        # up on an instance) are internal wiring: set them via
-        # `dispatchmethod` and `.inherit()`, which also registers the child
-        # for cache invalidation.
+        # The underscored arguments are internal, set by `dispatchmethod`
+        # and `.inherit()`.
         self._registry: dict[tuple[type, ...], Any] = {}
         self._default: Any = None
         self._default_signatures: list[tuple[type, ...]] = []
         self._skip = _skip
         self._parent = _parent
         self._binds_class = _binds_class
-        # Set once any registered type is an ABC: `issubclass` against an
-        # ABC can change after the fact (`SomeABC.register(cls)`), which
-        # bumps `abc.get_cache_token()` - same trick as functools'.
+        # Set once an ABC is registered, since `SomeABC.register(cls)` can
+        # change `issubclass` results after they were cached.
         self._abc_token: object | None = None
-        # Resolving a signature against `_registry` (and, on a miss, the
-        # whole `_parent` chain) only depends on `arg_types` and the
-        # registry contents, so a successful resolution can be memoized by
-        # `arg_types` - this is what actually matters for real call sites,
-        # which call with the same concrete types over and over. Failed
-        # resolutions (ambiguous / no match) aren't cached, since raising
-        # is already the slow, cold path. `_children` lets a mutation here
-        # invalidate every inherit()-chained descendant's cache too, since
-        # those can fall through to this multimethod's registry. Cache keys
-        # are a bare type for the common one-argument case (see `_resolve`)
-        # rather than always a one-element tuple, to avoid its allocation
-        # and (slightly more expensive) hashing on every call.
         self._cache: dict[type | tuple[type, ...], Callable[..., Any]] = {}
         self._children: list[weakref.ReferenceType[Multimethod]] = []
         if func is None:
             return
         _parse_decorator_args("Multimethod()", types)
-        # __name__, __doc__, __wrapped__, ... as functools.singledispatch
         functools.update_wrapper(self, func)
         self.__isabstractmethod__ = getattr(func, "__isabstractmethod__", False)
         self._default = func
@@ -150,13 +124,8 @@ class Multimethod:
 
     def _param_types(self, func: Any, *, strict: bool) -> tuple[Any, ...]:
         """Infer a registry key from `func`'s annotations, past `self`/`cls`.
-
-        String annotations (e.g. under `from __future__ import annotations`)
-        are evaluated, as functools does. A parameter without a usable
-        annotation (missing, or a string naming something not defined yet)
-        counts as `object`, or, if `strict`, raises `TypeError`, as does a
-        function with no parameters to dispatch on.
-        """
+        A missing or unresolvable annotation counts as `object`, or raises
+        `TypeError` if `strict`."""
         func, skip = self._unwrap(func)
         try:
             params = list(inspect.signature(func).parameters.values())
@@ -205,9 +174,6 @@ class Multimethod:
 
     def _register(self, caller: str, types: tuple[Any, ...], func: Any) -> None:
         sigs = _expand_unions(types or self._param_types(func, strict=True))
-        # Registering a type the default's annotation doesn't cover would
-        # otherwise be silently more specific than, or unrelated to, what
-        # the default claims to handle.
         defaults = [
             d for d in self._default_signatures_in_chain() if len(d) == len(sigs[0])
         ]
@@ -274,19 +240,9 @@ class Multimethod:
         self._children = alive
 
     def inherit(self) -> Multimethod:
-        """A multimethod chained to this one, for a subclass to replace one
-        implementation while inheriting everything else - unlike
-        `.register()`, which adds a peer entry compared against every other
-        registration by specificity, an overriding subclass's own
-        multimethod is always tried first, in full, before falling through
-        to this one. This mirrors plain method overriding rather than
-        standard multiple dispatch: the subclass wins regardless of how its
-        registered types compare to the base class's.
-
-        Assign the result as the subclass's own attribute, then build it up
-        with `.register(*types)` same as `dispatchmethod` itself; a
-        registered function defined inside the subclass's body can still
-        call `super()` normally, since it's an ordinary method either way:
+        """A multimethod for a subclass, inheriting this one's implementations.
+        Its own registrations are always tried first, whatever their types,
+        like a method override (see docs/methods.md):
 
             class Sub(Base):
                 visit = Base.visit.inherit()
@@ -358,11 +314,8 @@ class Multimethod:
         if not candidates:
             return None
 
-        # A candidate is a contender unless some *other* candidate dominates
-        # it - checking against every other candidate, not just a running
-        # "best so far", matters: two mutually-incomparable candidates
-        # encountered early don't make the call ambiguous if a later,
-        # more specific candidate dominates both of them.
+        # Not a running "best so far": a later candidate can dominate two
+        # earlier, mutually incomparable ones.
         maximal = [
             (sig, func)
             for sig, func in candidates
@@ -381,11 +334,8 @@ class Multimethod:
         return maximal[0][1]
 
     def _resolve(self, key: type | tuple[type, ...]) -> Callable[..., Any]:
-        """Find the implementation to call for the given argument type(s),
-        memoized in `self._cache` (see `__init__`), adapted to be called
-        with the multimethod's own arguments (see `_callable`). `key` is a
-        bare type for the common single-argument case, or a tuple of types
-        for multi-argument dispatch."""
+        """The implementation to call for `key` (a bare type for one argument,
+        else a tuple of types), adapted by `_callable` and cached."""
         if self._abc_token is not None and self._abc_token != get_cache_token():
             self._abc_token = get_cache_token()
             self._cache.clear()
@@ -417,36 +367,25 @@ class Multimethod:
 
     def _lookup(self, arg_types: tuple[type, ...]) -> Any:
         """The registered implementation for `arg_types`, uncached."""
-        # 1. Exact match in registry
         if arg_types in self._registry:
             return self._registry[arg_types]
 
-        # 2. Find most specialized via inheritance
         func = self._find_most_specialized(arg_types)
         if func is not None:
             return func
 
-        # 3. Fall through to a parent multimethod, if chained via `inherit()`
         if self._parent is not None:
             return self._parent._lookup(arg_types)
 
-        # 4. Fall back to default (always callable regardless of types)
         if self._default is not None:
             return self._default
 
-        # 5. No matching implementation
         raise TypeError(f"No matching implementation for types {arg_types}")
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        # The overwhelmingly common case - one dispatched argument, e.g.
-        # every `dispatchmethod` call (self is skipped) and most plain
-        # `dispatch` functions - is fast-pathed to avoid both the generator
-        # expression below (building and driving a generator per call is
-        # far more expensive than one attribute lookup) and wrapping that
-        # single type in a one-element tuple, which `_resolve` would
-        # otherwise need to allocate and hash on every call. `__class__`
-        # rather than `type()`, as functools does, so that proxies (e.g.
-        # `Mock(spec=cls)`) dispatch as the class they stand in for.
+        # Fast path for one dispatched argument (see docs/performance.md).
+        # `__class__`, not `type()`, so proxies like `Mock(spec=cls)`
+        # dispatch as that class.
         key: type | tuple[type, ...]
         if len(args) - self._skip == 1:
             key = args[self._skip].__class__
@@ -473,10 +412,8 @@ class Multimethod:
 
 
 class _PendingInherit:
-    """Placeholder returned by `inherit()`; collects `.register(*types)`
-    calls, then replaces itself with a real `Multimethod` - chained to
-    whichever base class defines the same attribute name - once Python
-    calls `__set_name__` on it at class-creation time."""
+    """Returned by `inherit()`: collects registrations until `__set_name__`
+    can find the base multimethod, then replaces itself with its child."""
 
     def __init__(self) -> None:
         self._registrations: list[tuple[tuple[Any, ...], Any]] = []
@@ -513,14 +450,8 @@ class _PendingInherit:
 
 
 def inherit() -> Multimethod:
-    """A subclass's own multimethod, inheriting every implementation of the
-    base class's, with the base multimethod found automatically instead of
-    spelled out: assign the result to the *same* attribute name the base
-    class uses, and Python's own class-creation machinery (`__set_name__`)
-    fills in the rest once the class body finishes, by looking up that name
-    on the base classes - exactly the lookup `super()` would do. Register
-    implementations with `.register(*types)` exactly like `dispatchmethod`
-    itself; they take precedence over the inherited ones:
+    """Like `Base.visit.inherit()`, but finds the base multimethod by looking
+    up the same attribute name on the base classes, as `super()` would:
 
         class Sub(Base):
             visit = inherit()
@@ -530,17 +461,10 @@ def inherit() -> Multimethod:
                 ...
                 return super().visit(x)
 
-    Equivalent to `Base.visit.inherit()` (see `Multimethod.inherit`), for
-    the common case where the base multimethod is simply inherited - use the
-    explicit form instead if the name differs from the base's, or the base
-    to chain to isn't the one plain attribute lookup would find.
+    Use `Base.visit.inherit()` directly when that lookup isn't what you want.
     """
-    # Declared as returning Multimethod (not _PendingInherit, its actual
-    # runtime type here) so that type checkers accept both the assignment
-    # to an attribute overriding a Multimethod-typed base one, and the
-    # .register(*types) calls that follow - by the time anything other
-    # than __set_name__ touches the attribute, it really has become one.
-    # (The same kind of deliberate mismatch as dataclasses.field()'s.)
+    # Typed as the Multimethod it becomes at class creation, so type checkers
+    # accept the attribute and its `.register()` calls (cf. dataclasses.field).
     return _PendingInherit()  # type: ignore[return-value]
 
 

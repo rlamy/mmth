@@ -46,18 +46,13 @@ def test_dispatch_matches_a_virtual_subclass():
     def _(obj: Greetable) -> str:
         return "hello, friend"
 
-    # Person never inherits from Greetable - no relationship at all in
-    # Person's own MRO - yet issubclass (and so dispatch) treats it as one,
-    # purely because of the .register() call.
     assert Greetable not in Person.__mro__
     assert issubclass(Person, Greetable)
     assert greet(Person()) == "hello, friend"
 
 
 def test_dispatch_matches_collections_abc_structural_subclass():
-    # collections.abc.Sized uses __subclasshook__ for duck-typing: any
-    # class with a __len__ counts as a "subclass", with neither real
-    # inheritance nor an explicit .register() call anywhere.
+    # Sized matches any class with a __len__, via __subclasshook__
     @dispatch
     def describe(obj: object) -> str:
         return "unsized"
@@ -95,9 +90,6 @@ def test_dispatch_prefers_the_more_specific_of_two_virtual_bases():
     def _(obj) -> str:
         return "derived"
 
-    # Thing is a virtual subclass of Derived, which is a real subclass of
-    # Base - so Thing is (via issubclass) a subclass of both, and Derived
-    # should win as the more specific match.
     assert issubclass(Thing, Base)
     assert issubclass(Thing, Derived)
     assert visit(Thing()) == "derived"
@@ -149,9 +141,6 @@ def test_dispatch_raises_ambiguous_for_two_unrelated_virtual_bases():
     def _(obj) -> str:
         return "swims"
 
-    # Duck is a virtual subclass of both Flyer and Swimmer, which are
-    # otherwise unrelated - same ambiguity a real multiple-inheritance
-    # diamond would produce, just established via .register() instead.
     with pytest.raises(TypeError, match="Ambiguous dispatch"):
         move(Duck())
 

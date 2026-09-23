@@ -156,12 +156,8 @@ def test_dispatchmethod_inherit_can_replace_several_implementations():
 
 
 def test_dispatchmethod_inherit_wins_regardless_of_relative_specificity():
-    # Handler registers the *narrower* type (Num); PickyHandler's override
-    # registers the *broader* one (Node). A plain multimethod comparing
-    # (PickyHandler, Node) against (Handler, Num) as peers would be
-    # ambiguous (neither type pair dominates the other) - but subclassing a
-    # dispatched method isn't standard multiple dispatch: PickyHandler's own
-    # table is tried first, in full, before ever falling back to Handler's.
+    # PickyHandler registers a broader type (Node) than Handler (Num), and
+    # still wins for Num
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
@@ -232,9 +228,8 @@ def test_inherit_function_collects_multiple_registrations():
 
 
 def test_inherit_function_raises_without_a_matching_base():
-    # exercise __set_name__ directly rather than via a real class statement:
-    # CPython wraps __set_name__ exceptions in a RuntimeError on some
-    # versions (and not others), which isn't what this test cares about.
+    # called directly, since some CPython versions wrap __set_name__
+    # errors raised by a class statement in a RuntimeError
     pending = inherit()
 
     class Orphan:

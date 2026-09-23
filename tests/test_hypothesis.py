@@ -9,52 +9,15 @@ from mmth import Multimethod
 
 @st.composite
 def _multi_inheritance_dag(draw, max_size=10, max_parents=3):
-    """A class hierarchy as a DAG rather than a tree: each node i > 0 gets
-    1..max_parents *direct* parents drawn from the earlier nodes (so
-    `max_parents=1` degenerates to a plain single-inheritance tree). The
-    classes are built for real as we go (not just as an abstract graph),
-    because getting them to actually construct relies on Python's own,
-    already-computed MROs:
+    """A class hierarchy as a DAG: each class after the first gets
+    1..max_parents unrelated direct parents among the earlier ones (so
+    `max_parents=1` gives a tree). Returns the classes and each one's
+    ancestor indices, used as an oracle independent of `issubclass`.
 
-    - Python rejects a bases list where one base is already an ancestor of
-      another (no valid MRO from that alone), so direct parents are first
-      filtered down to an antichain (mutually unrelated nodes) - diamonds
-      are still very much possible deeper in the hierarchy, e.g. two nodes
-      that each have a single, different parent, both ultimately
-      descending from the same node further up; only a single class's own
-      *direct* bases are constrained this way.
-    - That alone isn't sufficient, though: two classes sharing some of the
-      same (unrelated) ancestors, but listing them in opposite orders, can
-      each be individually fine while a later class combining both as
-      bases has no consistent MRO. A *fixed* rule (e.g. always sort by
-      node index) doesn't reliably avoid this either - a single-inheritance
-      chain doesn't get sorted, its internal MRO order is just a fixed
-      consequence of the chain, and that can silently disagree with a
-      fixed sort order chosen elsewhere:
-
-          class N1(N0): pass
-          class N2(N0): pass          # unrelated; fixed rule: N2 before N1
-          class N3(N1): pass
-          class N4(N3, N2): pass      # bases correctly sorted (N3, N2)...
-          N4.__mro__  # ...N3, N1, N2...  <- N1 before N2 regardless!
-
-      Instead, every antichain is ordered by each candidate's position in
-      a running "checkpoint" class's *real* `__mro__` - literally a class
-      that inherits from every node built so far, kept up to date by
-      re-deriving it (`type(new_node, checkpoint)`) after each new node.
-      Since that position comes from an MRO Python already accepted, it
-      reflects every constraint established so far, not just a
-      once-and-for-all guess - which cuts how often a class is still
-      unconstructible by roughly 40x in practice (measured by comparing
-      against the fixed-order version of this same generator). It doesn't
-      reach zero, though: a new node's *own* multi-parent merge can
-      introduce an emergent ordering for some pair that the checkpoint
-      didn't know about yet (the same phenomenon as above, recursively,
-      between the new node and the checkpoint itself) - when re-deriving
-      the checkpoint fails for that reason, the previous (still valid)
-      checkpoint is simply kept rather than updated, and the rare residual
-      case where a *node itself* (not just the checkpoint) fails to
-      construct is discarded via `assume(False)`.
+    Parents are ordered by their position in the MRO of a "checkpoint"
+    class inheriting from every class so far, since a fixed order often
+    yields bases with no consistent MRO; the rare remaining failures are
+    discarded.
     """
     n = draw(st.integers(min_value=1, max_value=max_size))
 
@@ -99,12 +62,8 @@ def _multi_inheritance_dag(draw, max_size=10, max_parents=3):
 
 
 def _with_registered_subset(dag):
-    """Extend a `_multi_inheritance_dag()` result with a random subset of
-    nodes to register - always including the root, so every node has at
-    least one registered ancestor. Kept separate from the DAG generator
-    itself: which nodes get registered is the test's own concern, not a
-    property of the class hierarchy.
-    """
+    """Add a random subset of nodes to register to a
+    `_multi_inheritance_dag()` result, always including the root."""
     classes, ancestors = dag
     return st.sets(st.integers(min_value=0, max_value=len(classes) - 1)).map(
         lambda registered: (classes, ancestors, registered | {0})
@@ -126,8 +85,7 @@ def test_dispatch_handles_multiple_inheritance(data, reverse_registration_order)
     classes, ancestors, registered = data
     mm = Multimethod()
 
-    # registration order shouldn't matter - this is exactly the axis a past
-    # bug in _find_most_specialized got wrong (see the ambiguity test below)
+    # registration order mustn't affect the result
     for i in sorted(registered, reverse=reverse_registration_order):
         mm.register(classes[i])(lambda obj, i=i: i)
 
@@ -145,13 +103,8 @@ def test_dispatch_handles_multiple_inheritance(data, reverse_registration_order)
 
 @st.composite
 def _multi_arg_dags(draw, min_arity=2, max_arity=3, max_size=6, max_parents=3):
-    """`arity` independent `_multi_inheritance_dag()` draws, one per
-    argument position, plus a random subset of signature tuples (one node
-    index per position) to register - always including the all-roots
-    signature, so every query has at least one registered match. `arity`
-    starts at 2 (not 1) since single-argument dispatch is already covered,
-    more thoroughly, by `test_dispatch_handles_multiple_inheritance` above.
-    """
+    """One `_multi_inheritance_dag()` per argument position, plus a random
+    subset of signatures to register, always including the all-roots one."""
     arity = draw(st.integers(min_value=min_arity, max_value=max_arity))
     dags = [
         draw(_multi_inheritance_dag(max_size=max_size, max_parents=max_parents))
@@ -170,10 +123,7 @@ def _multi_arg_dags(draw, min_arity=2, max_arity=3, max_size=6, max_parents=3):
 
 
 def _dominates(sig_a, sig_b, ancestors_lists):
-    """True if `sig_a` is strictly more specialized than `sig_b` - the same
-    rule as `Multimethod._is_more_specialized`, computed from the tracked
-    ancestor sets instead of `issubclass`.
-    """
+    """`Multimethod._is_more_specialized`, from the ancestor sets."""
     more_specific = False
     for a, b, ancestors in zip(sig_a, sig_b, ancestors_lists):
         if b in ancestors[a]:
