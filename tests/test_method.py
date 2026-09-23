@@ -97,7 +97,7 @@ def test_dispatchmethod_rejects_non_callable():
         dispatchmethod(42)
 
 
-def test_dispatchmethod_override_narrows_one_case():
+def test_dispatchmethod_override_replaces_one_implementation():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
@@ -126,7 +126,7 @@ def test_dispatchmethod_override_narrows_one_case():
     assert PickyHandler().visit(Add(Num(1), Num(2))) == "default"
 
 
-def test_dispatchmethod_override_can_narrow_more_than_one_case():
+def test_dispatchmethod_override_can_replace_several_implementations():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):

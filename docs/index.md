@@ -22,13 +22,13 @@ def add_int_float(a: int, b: float) -> float:
     return float(a) + b
 
 print(add(1, 2))     # 3 (int, int) -> default
-print(add(1, 2.0))  # 3.0 (int, float) -> specialized
+print(add(1, 2.0))  # 3.0 (int, float) -> registered implementation
 ```
 
 ## Where next
 
 - [Specification](specification.md): syntax, dispatch semantics, examples and error cases
-- [Methods](methods.md): `dispatchmethod` and overriding cases in subclasses
+- [Methods](methods.md): `dispatchmethod` and overriding implementations in subclasses
 - [Performance](performance.md): resolution caching and benchmarks
 - [API reference](reference.md)
 - [Development](development.md): dev setup, CI checks, building these docs

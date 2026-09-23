@@ -64,10 +64,10 @@ class Evaluator:
 Evaluator().visit(Add(Num(1), Num(2)))  # 3
 ```
 
-## Overriding One Case in a Subclass
+## Overriding One Implementation in a Subclass
 
 Subclassing a `dispatchmethod` isn't standard multiple dispatch: a subclass
-overriding one case should win *regardless* of how its registered type
+overriding one implementation should win *regardless* of how its registered type
 compares in specificity to what the base class registered - exactly like a
 plain method override, which doesn't care what a sibling method does.
 Comparing `self`'s type against the other arguments as peers (as `dispatch`

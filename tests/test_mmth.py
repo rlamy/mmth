@@ -91,14 +91,14 @@ def test_getitem_after_setitem():
     assert handler({"key": "value"}) == "{'key': 'value'}"
 
 
-def test_keyerror_on_missing_specialization():
+def test_keyerror_on_missing_implementation():
     @dispatch
     def add(a: int, b: int) -> int:
         return a + b
 
     with pytest.raises(KeyError) as exc_info:
         add[float, float]
-    assert "No specialization registered" in str(exc_info.value)
+    assert "No implementation registered" in str(exc_info.value)
 
 
 def test_ambiguity_detection():
@@ -125,7 +125,7 @@ def test_ambiguity_detection():
     assert "Ambiguous dispatch" in str(exc_info.value)
 
 
-def test_default_fallback_no_variants():
+def test_default_fallback_no_registrations():
     @dispatch
     def add(a: int, b: int) -> int:
         return a + b
@@ -134,7 +134,7 @@ def test_default_fallback_no_variants():
     assert add("a", "b") == "ab"
 
 
-def test_default_fallback_with_variants():
+def test_default_fallback_with_registrations():
     @dispatch
     def add(a: int, b: int) -> int:
         return a + b
@@ -153,7 +153,7 @@ def test_no_implementation_at_all():
 
     with pytest.raises(TypeError) as exc_info:
         d("str")
-    assert "No matching variant" in str(exc_info.value)
+    assert "No matching implementation" in str(exc_info.value)
 
 
 def test_single_type_shorthand():

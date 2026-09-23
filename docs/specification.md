@@ -11,16 +11,16 @@ def function_name(arg1: Type1, arg2: Type2, ...) -> ReturnType:
     ...
 ```
 
-### 2. Register Specialization (Main Syntax)
+### 2. Register an Implementation (Main Syntax)
 
 ```python
 @function_name.register(Type1, Type2, ...)
 def function_name_impl(arg1: Type1, arg2: Type2, ...) -> ReturnType:
-    """Specialized implementation"""
+    """Implementation for (Type1, Type2, ...)"""
     ...
 ```
 
-### 3. Register Specialization (Metaprogramming)
+### 3. Register an Implementation (Metaprogramming)
 
 ```python
 # Direct assignment
@@ -33,7 +33,7 @@ def custom_impl(arg1: Type1, arg2: Type2) -> ReturnType:
 function_name[Type1, Type2] = custom_impl
 ```
 
-### 4. Access Specialization
+### 4. Access an Implementation
 
 ```python
 impl = function_name[Type1, Type2]  # Returns registered callable or raises KeyError
@@ -58,9 +58,9 @@ When `function_name(arg1, arg2, ...)` is called:
    - Exact match beats inheritance match
 
 5. **Fallback**:
-   - If variants exist but none match → raise `TypeError`
-   - If no variants exist → call default implementation
-   - If no default exists → raise `TypeError`
+   - If no registered signature matches → call the default implementation
+     (the function decorated with `@dispatch`), whatever the argument types
+   - If there is no default (a bare `Multimethod()`) → raise `TypeError`
 
 ### Registration Methods
 
@@ -90,7 +90,7 @@ def add_int_float(a: int, b: float) -> float:
     return float(a) + b
 
 print(add(1, 2))     # 3 (int, int) -> default
-print(add(1, 2.0))  # 3.0 (int, float) -> specialized
+print(add(1, 2.0))  # 3.0 (int, float) -> registered implementation
 ```
 
 ### Metaprogramming
@@ -107,7 +107,7 @@ def json_handler(data: dict) -> str:
 # Register via assignment
 process[dict] = json_handler
 
-# Access specialization
+# Access an implementation
 handler = process[dict]
 print(handler({"key": "value"}))  # {"key": "value"}
 ```
@@ -173,15 +173,17 @@ f(Dog(), Dog())
 def foo(a: int) -> int:
     return a
 
-# KeyError - specialization not registered
-foo[float]  # KeyError: "No specialization registered for (<class 'float'>,)"
+# KeyError - no implementation registered for exactly these types
+foo[float]  # KeyError: "No implementation registered for (<class 'float'>,)"
 
-# TypeError - no matching variant and variants exist
-@foo.register(int)
+# TypeError - no matching implementation and no default to fall back to
+bar = Multimethod()
+
+@bar.register(int)
 def _(a: int) -> int:
     return a * 2
 
-foo("str")  # TypeError: "No matching variant for types (<class 'str'>,)"
+bar("str")  # TypeError: "No matching implementation for types (<class 'str'>,)"
 ```
 
 ## Design Decisions

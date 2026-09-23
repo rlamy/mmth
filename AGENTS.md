@@ -188,7 +188,7 @@ if not types:
     raise TypeError("register() requires at least one type argument")
 
 if types not in self._registry:
-    raise KeyError(f"No specialization registered for {types}")
+    raise KeyError(f"No implementation registered for {types}")
 
 # Avoid
 if not types:
@@ -217,7 +217,7 @@ def __call__(self, *args, **kwargs):
     if func is not None:
         return func(*args, **kwargs)
     
-    raise TypeError(f"No matching variant for {arg_types}")
+    raise TypeError(f"No matching implementation for types {arg_types}")
 ```
 
 ---
@@ -312,7 +312,7 @@ def add_int_float(a: int, b: float) -> float:
     """Specialized for int + float."""
     return float(a) + b
 
-# Access specialization
+# Access an implementation
 impl = add[int, float]
 
 # Metaprogramming
@@ -324,7 +324,7 @@ add[str, str] = lambda a, b: f"{a}{b}"
 1. Exact match in registry
 2. Inheritance-based match (most specific wins)
 3. Default fallback
-4. Error if no match and variants exist
+4. Error if no match and no default (bare `Multimethod()`)
 
 Each `Multimethod` memoizes a successful resolution by argument types,
 invalidated on `register()`/`__setitem__()` (cascading to `override()`
@@ -335,15 +335,15 @@ descendants) - see docs/performance.md.
 `dispatchmethod` is `dispatch` for use on a method: `self` is bound
 automatically via the descriptor protocol and excluded from dispatch, so
 `.register(*types)` only needs the types of the remaining arguments. A
-subclass narrows one case for itself via `override()` (chains to a
-separate multimethod, tried first, so the subclass always wins regardless
-of relative type specificity - unlike standard multiple dispatch) rather
-than `.register()` on the shared table; `override()` finds the base
-multimethod itself via `__set_name__` (same lookup `super()` would do), or
-use `Base.visit.override()` directly when that auto-lookup isn't what you
-want. See docs/methods.md ("Method Dispatch" and "Overriding One Case in a
-Subclass") for the full examples, including using `dispatchmethod`
-to replace the Visitor pattern (dispatching straight on a node's type
+subclass replaces one implementation for itself via `override()` (chains
+to a separate multimethod, tried first, so the subclass always wins
+regardless of relative type specificity - unlike standard multiple
+dispatch) rather than `.register()` on the shared table; `override()`
+finds the base multimethod itself via `__set_name__` (same lookup
+`super()` would do), or use `Base.visit.override()` directly when that
+auto-lookup isn't what you want. See docs/methods.md ("Method Dispatch"
+and "Overriding One Implementation in a Subclass") for the full examples,
+including using `dispatchmethod` to replace the Visitor pattern (dispatching straight on a node's type
 instead of an `accept()`/`visit_ElementType()` callback pair).
 
 ```python

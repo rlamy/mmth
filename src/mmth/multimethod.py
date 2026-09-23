@@ -10,14 +10,18 @@ class Multimethod:
     def __init__(
         self,
         func: Callable[..., Any] | None = None,
-        skip: int = 0,
-        parent: Multimethod | None = None,
+        *,
+        _skip: int = 0,
+        _parent: Multimethod | None = None,
     ) -> None:
+        # `_skip` (leading arguments excluded from dispatch, i.e. `self`) and
+        # `_parent` (the `override()` chain) are internal wiring: set them
+        # via `dispatchmethod` and `.override()`, which also registers the
+        # child for cache invalidation.
         self._registry: dict[tuple[type, ...], Callable[..., Any]] = {}
         self._default: Callable[..., Any] | None = None
-        self._has_user_variants = False
-        self._skip = skip
-        self._parent = parent
+        self._skip = _skip
+        self._parent = _parent
         # Resolving a signature against `_registry` (and, on a miss, the
         # whole `_parent` chain) only depends on `arg_types` and the
         # registry contents, so a successful resolution can be memoized by
@@ -54,7 +58,6 @@ class Multimethod:
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         if not types:
             raise TypeError("register() requires at least one type argument")
-        self._has_user_variants = True
 
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             self._registry[types] = func
@@ -74,14 +77,14 @@ class Multimethod:
         self._children = alive
 
     def override(self) -> Multimethod:
-        """A multimethod chained to this one, for a subclass to narrow a case
-        while inheriting everything else - unlike `.register()`, which adds
-        a peer entry compared against every other registration by
-        specificity, an overriding subclass's own multimethod is always
-        tried first, in full, before falling through to this one. This
-        mirrors plain method overriding rather than standard multiple
-        dispatch: the subclass wins regardless of how its registered types
-        compare to the base class's.
+        """A multimethod chained to this one, for a subclass to replace one
+        implementation while inheriting everything else - unlike
+        `.register()`, which adds a peer entry compared against every other
+        registration by specificity, an overriding subclass's own
+        multimethod is always tried first, in full, before falling through
+        to this one. This mirrors plain method overriding rather than
+        standard multiple dispatch: the subclass wins regardless of how its
+        registered types compare to the base class's.
 
         Assign the result as the subclass's own attribute, then build it up
         with `.register(*types)` same as `dispatchmethod` itself; a
@@ -96,7 +99,7 @@ class Multimethod:
                     ...
                     return super().visit(x)
         """
-        child = Multimethod(skip=self._skip, parent=self)
+        child = Multimethod(_skip=self._skip, _parent=self)
         self._children.append(weakref.ref(child))
         return child
 
@@ -105,7 +108,7 @@ class Multimethod:
             types = (types,)
         if types in self._registry:
             return self._registry[types]
-        raise KeyError(f"No specialization registered for {types}")
+        raise KeyError(f"No implementation registered for {types}")
 
     def __setitem__(
         self, types: type | tuple[type, ...], func: Callable[..., Any]
@@ -113,9 +116,7 @@ class Multimethod:
         if not isinstance(types, tuple):
             types = (types,)
         self._registry[types] = func
-        self._has_user_variants = True
         self._invalidate_cache()
-        return None
 
     def _is_more_specialized(
         self, sig_a: tuple[type, ...], sig_b: tuple[type, ...]
@@ -200,9 +201,6 @@ class Multimethod:
             return self._default
 
         # 5. No matching implementation
-        if self._has_user_variants:
-            raise TypeError(f"No matching variant for types {arg_types}")
-
         raise TypeError(f"No matching implementation for types {arg_types}")
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
@@ -265,8 +263,8 @@ class _PendingOverride:
                 break
         if not isinstance(parent, Multimethod):
             raise TypeError(
-                f"override(): no base class of {owner.__name__} defines a "
-                f"Multimethod named {name!r}"
+                f"override() found no base class of {owner.__name__} "
+                f"defining a Multimethod named {name!r}"
             )
         dispatcher = parent.override()
         for types, func in self._registrations:
@@ -280,7 +278,7 @@ def override() -> Multimethod:
     attribute name the base class uses, and Python's own class-creation
     machinery (`__set_name__`) fills in the rest once the class body
     finishes, by looking up that name on the base classes - exactly the
-    lookup `super()` would do. Collect cases with `.register(*types)`
+    lookup `super()` would do. Register implementations with `.register(*types)`
     exactly like `dispatchmethod` itself:
 
         class Sub(Base):
@@ -311,7 +309,6 @@ def dispatch(*types: Any) -> Any:
             dispatcher = Multimethod(func)
             if types and not callable(types[0]):
                 dispatcher._registry[types] = func
-                dispatcher._has_user_variants = True
             return dispatcher
         raise TypeError("dispatch expects a callable function")
 
@@ -327,7 +324,7 @@ def dispatchmethod(func: Callable[..., Any]) -> Multimethod:
     from dispatch, so `.register(*types)` only lists the types of the
     remaining arguments.
 
-    A subclass can narrow a single case for itself, without touching the
+    A subclass can replace a single implementation for itself, without touching the
     base class, via `override()` (see `override` and `Multimethod.override`).
 
     ```python
@@ -346,5 +343,5 @@ def dispatchmethod(func: Callable[..., Any]) -> Multimethod:
     ```
     """
     if not callable(func) or isinstance(func, type):
-        raise TypeError("dispatchmethod expects a callable function")
-    return Multimethod(func, skip=1)
+        raise TypeError(f"dispatchmethod() expected a function, got {func!r}")
+    return Multimethod(func, _skip=1)

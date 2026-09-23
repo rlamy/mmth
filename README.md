@@ -22,7 +22,7 @@ def add_int_float(a: int, b: float) -> float:
     return float(a) + b
 
 print(add(1, 2))     # 3 (int, int) -> default
-print(add(1, 2.0))  # 3.0 (int, float) -> specialized
+print(add(1, 2.0))  # 3.0 (int, float) -> registered implementation
 ```
 
 ## Documentation
