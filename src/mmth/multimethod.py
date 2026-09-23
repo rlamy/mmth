@@ -8,11 +8,14 @@ import itertools
 import weakref
 from abc import get_cache_token
 from collections.abc import Mapping
-from types import MappingProxyType, MethodType, UnionType
+from types import MappingProxyType, MethodType, NoneType, UnionType
 from typing import (
+    Annotated,
     Any,
     Callable,
+    TypeVar,
     Union,
+    _SpecialForm,
     get_args,
     get_origin,
     get_type_hints,
@@ -22,29 +25,48 @@ from typing import (
 # Not the implementation's own type: implementations are all named `_`, so
 # type checkers would treat a subclass's `_` as overriding its base's.
 _Registered = Any
-_TypeSpec = type | UnionType
+# `_SpecialForm` is how mypy types `Optional[X]`, `Union[...]`, `Any` etc.
+_TypeSpec = type | UnionType | TypeVar | _SpecialForm | None
 
 
-def _union_members(t: Any) -> tuple[Any, ...]:
-    """Return `t`'s members if it's a union, else `(t,)`."""
-    if get_origin(t) in (Union, UnionType):
-        return get_args(t)
-    return (t,)
+def _classes(t: Any) -> tuple[type, ...] | None:
+    """Return the classes that type annotation `t` stands for.
 
-
-def _is_type_spec(t: Any) -> bool:
-    """Return whether `t` is a type, or a union of types."""
-    return all(isinstance(m, type) for m in _union_members(t))
+    Return None if it can't be dispatched on, like a parameterized generic,
+    whose parameters `isinstance` can't check.
+    """
+    if t is None:
+        return (NoneType,)
+    if t is Any:
+        return (object,)
+    if isinstance(t, TypeVar):
+        if t.__bound__ is not None:
+            return _classes(t.__bound__)
+        if t.__constraints__:
+            return _classes(Union[t.__constraints__])
+        return (object,)
+    origin = get_origin(t)
+    if origin is Annotated:
+        return _classes(get_args(t)[0])
+    if origin in (Union, UnionType):
+        members = [_classes(m) for m in get_args(t)]
+        if any(m is None for m in members):
+            return None
+        return tuple(dict.fromkeys(c for m in members if m for c in m))
+    if isinstance(t, type) and origin is None:
+        return (t,)
+    return None
 
 
 def _is_function(obj: Any) -> bool:
     """Return whether `obj` can be registered as an implementation.
 
-    That is, a non-type callable, or a `classmethod`/`staticmethod`.
+    That is, a callable that isn't a type or other annotation (e.g.
+    `list[int]`, which is callable too), or a `classmethod`/`staticmethod`.
     """
     if isinstance(obj, (classmethod, staticmethod)):
         return True
-    return callable(obj) and not _is_type_spec(obj)
+    return callable(obj) and not isinstance(obj, type) and get_origin(obj) is None
 
 
 def _parse_decorator_args(
@@ -57,14 +79,14 @@ def _parse_decorator_args(
     if func is None and args and _is_function(args[-1]):
         args, func = args[:-1], args[-1]
     for t in args:
-        if not _is_type_spec(t):
+        if _classes(t) is None:
             raise TypeError(f"{caller} expected types, got {t!r}")
     return args, func
 
 
-def _expand_unions(types: tuple[Any, ...]) -> list[tuple[type, ...]]:
-    """Every signature a (possibly union-containing) signature stands for."""
-    return list(itertools.product(*(_union_members(t) for t in types)))
+def _expand(types: tuple[Any, ...]) -> list[tuple[type, ...]]:
+    """Return the signatures of classes that type annotations `types` mean."""
+    return list(itertools.product(*(_classes(t) or () for t in types)))
 
 
 class Multimethod:
@@ -124,7 +146,7 @@ class Multimethod:
         functools.update_wrapper(self, func)
         self.__isabstractmethod__ = getattr(func, "__isabstractmethod__", False)
         self._default = func
-        self._default_signatures = _expand_unions(
+        self._default_signatures = _expand(
             types or self._param_types(func, strict=False)
         )
         for sig in self._default_signatures:
@@ -142,8 +164,8 @@ class Multimethod:
     def _param_types(self, func: Any, *, strict: bool) -> tuple[Any, ...]:
         """Infer a registry key from `func`'s annotations, past `self`/`cls`.
 
-        A missing or unresolvable annotation counts as `object`, or raises
-        `TypeError` if `strict`.
+        A missing annotation, or one that can't be dispatched on, counts as
+        `object`, or raises `TypeError` if `strict`.
         """
         func, skip = self._unwrap(func)
         try:
@@ -158,16 +180,22 @@ class Multimethod:
         for p in params[skip:]:
             annotation = hints.get(p.name, p.annotation)
             # `Parameter.empty` (no annotation) is itself a class
-            if annotation is not p.empty and _is_type_spec(annotation):
+            if annotation is not p.empty and _classes(annotation) is not None:
                 types.append(annotation)
-            elif strict:
+            elif not strict:
+                types.append(object)
+            elif annotation is p.empty:
                 raise TypeError(
                     f"register() found no type annotation on parameter "
                     f"{p.name!r} of {func.__qualname__}; annotate it or pass "
                     f"the types explicitly"
                 )
             else:
-                types.append(object)
+                raise TypeError(
+                    f"register() can't dispatch on parameter {p.name!r} of "
+                    f"{func.__qualname__}, annotated {annotation!r}; pass the "
+                    f"types explicitly"
+                )
         if strict and not types:
             raise TypeError(
                 f"register() found no parameters to dispatch on in "
@@ -192,7 +220,7 @@ class Multimethod:
         self._invalidate_cache()
 
     def _register(self, caller: str, types: tuple[Any, ...], func: Any) -> None:
-        sigs = _expand_unions(types or self._param_types(func, strict=True))
+        sigs = _expand(types or self._param_types(func, strict=True))
         defaults = [
             d for d in self._default_signatures_in_chain() if len(d) == len(sigs[0])
         ]
@@ -280,16 +308,21 @@ class Multimethod:
         self._children.append(weakref.ref(child))
         return child
 
-    def __getitem__(self, types: type | tuple[type, ...]) -> Callable[..., Any]:
+    def __getitem__(
+        self, types: _TypeSpec | tuple[_TypeSpec, ...]
+    ) -> Callable[..., Any]:
         """Return the implementation registered for exactly `types`.
 
-        A single type stands for a one-element tuple. Raise `KeyError` if
-        nothing is registered for them.
+        A single type stands for a one-element tuple. For a union, the same
+        implementation must be registered for every member. Raise `KeyError`
+        if there's no such implementation.
         """
         if not isinstance(types, tuple):
             types = (types,)
-        if types in self._registry:
-            return self._registry[types]
+        types, _ = _parse_decorator_args("__getitem__()", types)
+        impls = [self._registry.get(sig) for sig in _expand(types)]
+        if impls[0] is not None and all(impl is impls[0] for impl in impls):
+            return impls[0]
         raise KeyError(f"No implementation registered for {types}")
 
     def __setitem__(
@@ -312,9 +345,13 @@ class Multimethod:
             {sig[0] if len(sig) == 1 else sig: f for sig, f in self._registry.items()}
         )
 
-    def dispatch(self, *types: type) -> Any:
+    def dispatch(self, *types: _TypeSpec) -> Any:
         """Return the implementation a call with arguments of `types` would run."""
-        return self._lookup(types)
+        types, _ = _parse_decorator_args("dispatch()", types)
+        classes = [_classes(t) for t in types]
+        if any(c is None or len(c) != 1 for c in classes):
+            raise TypeError(f"dispatch() expected one class per argument, got {types}")
+        return self._lookup(tuple(c[0] for c in classes if c))
 
     def _is_more_specialized(
         self, sig_a: tuple[type, ...], sig_b: tuple[type, ...]
@@ -519,14 +556,15 @@ def dispatch(*types: Any) -> Any:
     """Turn a function into a multimethod, with it as the default.
 
     The default implementation is called whenever no registered signature
-    matches. Use either bare, `@dispatch`, or with explicit types, `@dispatch(T1, T2)`,
-    which take precedence over annotations, same as `.register()`. Unlike
-    `.register()`, a parameter without a type annotation counts as `object`.
+    matches. Use either bare, `@dispatch`, or with explicit types,
+    `@dispatch(T1, T2)`, which take precedence over annotations, same as
+    `.register()`. Unlike `.register()`, a parameter without a type
+    annotation, or with one that can't be dispatched on, counts as `object`.
     """
     types, func = _parse_decorator_args("dispatch()", types)
 
     def decorator(func: Callable[..., Any]) -> Multimethod:
-        if not callable(func) or _is_type_spec(func):
+        if not _is_function(func):
             raise TypeError(f"dispatch() expected a function, got {func!r}")
         return Multimethod(func, *types)
 

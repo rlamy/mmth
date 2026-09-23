@@ -122,6 +122,25 @@ When `function_name(arg1, arg2, ...)` is called:
   virtual subclasses (via `ABC.register()` or `__subclasshook__`), including
   ones registered after the multimethod was first called
 
+### Annotations That Aren't Classes
+
+Wherever a type is expected (explicit types, annotations, `func[...]`), these
+standard annotations stand for classes:
+
+| Annotation | Dispatches as |
+|------------|---------------|
+| `Any` | `object` |
+| `None` | `NoneType` |
+| `Optional[X]`, `Union[X, Y]`, `X \| Y` | each member, as a union (see above) |
+| `Annotated[X, ...]` | `X` |
+| A `TypeVar` | its bound, else its constraints as a union, else `object` |
+
+Anything else, notably a parameterized generic like `list[int]` (dispatch
+can't check its parameters) or `Literal[...]`, raises `TypeError` as an
+explicit type or a registered implementation's annotation, and counts as
+`object` in the default's annotations. For `func[...]` with a union, the same
+implementation must be registered for every member.
+
 ### Introspection
 
 As with `functools.singledispatch`:
@@ -146,6 +165,8 @@ like `functools.singledispatch` and `functools.singledispatchmethod`, except:
   the default for `object`, so `@singledispatch def f(x: Dog)` followed by
   `f.register(Animal)` or `f.register(object)` works there; mmth raises
   `TypeError`, since only subclasses of `Dog` may be registered (see above).
+- **`Any` means `object`**: functools treats it as a class that nothing is
+  an instance of, so an implementation registered for `Any` never runs.
 - **Looking a `dispatchmethod` up on the class**: `Class.method(obj, arg)`
   dispatches on `arg`, skipping `obj` as it would `self`, while functools
   dispatches on `obj`. So a `classmethod`/`staticmethod` implementation of an

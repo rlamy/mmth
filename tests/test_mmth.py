@@ -1,3 +1,14 @@
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    List,
+    Literal,
+    Optional,
+    TypeVar,
+    Union,
+)
+
 import pytest
 
 from mmth import dispatch
@@ -418,7 +429,7 @@ def test_register_rejects_unresolvable_string_annotation():
     def g(a: "Undefined") -> str:  # noqa: F821
         return "g"
 
-    with pytest.raises(TypeError, match="no type annotation on parameter 'a'"):
+    with pytest.raises(TypeError, match="can't dispatch on parameter 'a'"):
         f.register(g)
 
 
@@ -480,3 +491,122 @@ def test_setitem_accepts_any_object():
     marker = object()
     f[int] = marker
     assert f[int] is marker
+
+
+def test_any_means_object():
+    @dispatch
+    def f(a: Any) -> str:
+        return "default"
+
+    assert f[object] is f._default
+    f.register(int)(lambda a: "int")  # a subclass of the default's Any
+
+    @f.register
+    def g(a: Any, b: int) -> str:
+        return "any, int"
+
+    assert f(1) == "int"
+    assert f("s", 1) == "any, int"
+
+
+def test_none_means_nonetype():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    f.register(None)(lambda a: "none")
+
+    @f.register
+    def g(a: None, b: None) -> str:
+        return "none, none"
+
+    assert f(None) == "none"
+    assert f(None, None) == "none, none"
+    assert f[None] is f[type(None)]
+
+
+def test_optional_and_union_members():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    @f.register
+    def g(a: Optional[int]) -> str:
+        return "int or none"
+
+    f.register(Union[str, bytes, None])(lambda a: "str, bytes or none")
+
+    assert f(1) == "int or none"
+    assert f(None) == "str, bytes or none"
+    assert f(b"b") == "str, bytes or none"
+    assert f[Union[str, bytes]] is f[bytes]
+    with pytest.raises(KeyError):
+        f[Optional[int]]  # int and None now have different implementations
+
+
+def test_annotated_means_its_type():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    @f.register
+    def g(a: Annotated[int, "metadata"]) -> str:
+        return "int"
+
+    assert f[int] is g
+    assert f(1) == "int"
+
+
+def test_typevar_means_its_bound_or_constraints():
+    Unbound = TypeVar("Unbound")
+    Bound = TypeVar("Bound", bound=int)
+    Constrained = TypeVar("Constrained", str, bytes)
+
+    @dispatch
+    def f(a: Unbound) -> str:
+        return "default"
+
+    f.register(Bound)(lambda a: "int")
+
+    @f.register
+    def g(a: Constrained) -> str:
+        return "str or bytes"
+
+    assert f[object] is f._default
+    assert f(True) == "int"
+    assert f("s") == f(b"b") == "str or bytes"
+
+
+def test_parameterized_generics_are_rejected():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    def g(a: list[int]) -> str:
+        return "list"
+
+    for annotation in (list[int], List[int], List, Callable[[], int], Literal[1]):
+        with pytest.raises(TypeError, match="expected types"):
+            f.register(annotation)(g)
+    with pytest.raises(TypeError, match="can't dispatch on parameter 'a'"):
+        f.register(g)
+
+
+def test_dispatch_default_ignores_parameterized_generics():
+    @dispatch
+    def f(a: list[int]) -> str:
+        return "default"
+
+    assert f[object] is f._default
+
+
+def test_dispatch_method_accepts_annotations():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    f.register(int)(lambda a: "int")
+    assert f.dispatch(None) is f._default
+    assert f.dispatch(Annotated[bool, "m"])(True) == "int"
+    with pytest.raises(TypeError, match="one class per argument"):
+        f.dispatch(Optional[int])

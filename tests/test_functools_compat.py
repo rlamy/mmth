@@ -8,7 +8,7 @@ see `test_*_differs_from_functools` below and docs/specification.md.
 import abc
 import functools
 import inspect
-from typing import Optional, Union
+from typing import Any, Optional, Union
 from unittest import mock
 
 import pytest
@@ -344,3 +344,18 @@ def test_dispatchmethod_class_access_differs_from_functools():
     reference, cls = _both_methods(build)
     assert reference.m(reference(), 1) == "default"
     assert cls.m(cls(), 1) == "int"
+
+
+def test_any_differs_from_functools():
+    # functools treats Any as a class nothing is an instance of
+    def build(decorator):
+        @decorator
+        def f(x):
+            return "default"
+
+        f.register(Any)(lambda x: "any")
+        return f
+
+    reference, f = _both(build)
+    assert reference(1) == "default"
+    assert f(1) == "any"
