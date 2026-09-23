@@ -159,17 +159,25 @@ def add(a, b):  # No types
 
 ### Docstrings
 
-- Use Google-style or NumPy-style docstrings
-- Include docstrings for public APIs
-- Keep brief and descriptive
+- Public docstrings must follow [PEP 257](https://peps.python.org/pep-0257/),
+  and private ones should. `ruff check` enforces its format on every
+  docstring (`D` rules, `pep257` convention); tests are exempt from needing
+  docstrings, not from their format.
+- Include docstrings for public APIs: modules, classes, `__init__`, public
+  and dunder methods, functions
+- One-line summary in the imperative ("Return ...", not "Returns ..."),
+  ending with a period; then a blank line before any further description,
+  and closing quotes on their own line
+- Google style (`Args:`, `Returns:`) for sections, which mkdocstrings
+  renders; keep brief and descriptive
 
 ```python
 def register(self, *types):
-    """Register a specialized implementation for the given types.
-    
+    """Register an implementation for the given types.
+
     Args:
         *types: Type signature to match against.
-    
+
     Returns:
         A decorator that registers the function.
     """

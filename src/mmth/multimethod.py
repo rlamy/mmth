@@ -1,3 +1,5 @@
+"""Multimethods: functions dispatched on the types of their arguments."""
+
 from __future__ import annotations
 
 import functools
@@ -24,21 +26,22 @@ _TypeSpec = type | UnionType
 
 
 def _union_members(t: Any) -> tuple[Any, ...]:
-    """`t`'s members if it's a union (`int | str`, `Union[int, str]`),
-    else just `(t,)`."""
+    """Return `t`'s members if it's a union, else `(t,)`."""
     if get_origin(t) in (Union, UnionType):
         return get_args(t)
     return (t,)
 
 
 def _is_type_spec(t: Any) -> bool:
-    """True for a type, or a union of types."""
+    """Return whether `t` is a type, or a union of types."""
     return all(isinstance(m, type) for m in _union_members(t))
 
 
 def _is_function(obj: Any) -> bool:
-    """True for anything registrable as an implementation: a non-type
-    callable, or a `classmethod`/`staticmethod` object."""
+    """Return whether `obj` can be registered as an implementation.
+
+    That is, a non-type callable, or a `classmethod`/`staticmethod`.
+    """
     if isinstance(obj, (classmethod, staticmethod)):
         return True
     return callable(obj) and not _is_type_spec(obj)
@@ -47,8 +50,10 @@ def _is_function(obj: Any) -> bool:
 def _parse_decorator_args(
     caller: str, args: tuple[Any, ...], func: Any = None
 ) -> tuple[tuple[Any, ...], Any]:
-    """Split decorator arguments into `(types, func)`, with `func` None when
-    they're just types (`@f.register(*types)`)."""
+    """Split decorator arguments into `(types, func)`.
+
+    `func` is None when they're just types (`@f.register(*types)`).
+    """
     if func is None and args and _is_function(args[-1]):
         args, func = args[:-1], args[-1]
     for t in args:
@@ -63,6 +68,14 @@ def _expand_unions(types: tuple[Any, ...]) -> list[tuple[type, ...]]:
 
 
 class Multimethod:
+    """A function whose implementation is chosen by its arguments' types.
+
+    Usually created with `dispatch` or `dispatchmethod`. Implementations are
+    added with `register()` or `f[types] = impl`, and looked up with
+    `f[types]`, `dispatch()` or `registry`; `inherit()` chains a subclass's
+    own multimethod to this one.
+    """
+
     # Slots keep calls fast despite update_wrapper's instance attributes
     # (see docs/performance.md).
     __slots__ = (
@@ -87,8 +100,13 @@ class Multimethod:
         _parent: Multimethod | None = None,
         _binds_class: bool = False,
     ) -> None:
-        # The underscored arguments are internal, set by `dispatchmethod`
-        # and `.inherit()`.
+        """Create a multimethod with `func` as its default implementation.
+
+        `func` is also registered under `types`, or else its annotations.
+        Without `func`, a call matching no registration raises `TypeError`.
+        The underscored arguments are internal, set by `dispatchmethod` and
+        `inherit()`.
+        """
         self._registry: dict[tuple[type, ...], Any] = {}
         self._default: Any = None
         self._default_signatures: list[tuple[type, ...]] = []
@@ -114,8 +132,7 @@ class Multimethod:
                 self._store(sig, func)
 
     def _unwrap(self, func: Any) -> tuple[Callable[..., Any], int]:
-        """The plain function behind `func`, and how many of its leading
-        parameters (`self`/`cls`) aren't dispatched on."""
+        """Return `func`'s plain function, and how many leading params to skip."""
         if isinstance(func, staticmethod):
             return func.__func__, 0
         if isinstance(func, classmethod):
@@ -124,8 +141,10 @@ class Multimethod:
 
     def _param_types(self, func: Any, *, strict: bool) -> tuple[Any, ...]:
         """Infer a registry key from `func`'s annotations, past `self`/`cls`.
+
         A missing or unresolvable annotation counts as `object`, or raises
-        `TypeError` if `strict`."""
+        `TypeError` if `strict`.
+        """
         func, skip = self._unwrap(func)
         try:
             params = list(inspect.signature(func).parameters.values())
@@ -200,10 +219,10 @@ class Multimethod:
     @overload
     def register(self, *types: _TypeSpec, func: Any) -> _Registered: ...
     def register(self, *types: Any, func: Any = None) -> Any:
-        """Register an implementation, for the given types or, if none are
-        given, its parameters' annotations (all of which must be types).
+        """Register an implementation for the given types, or its annotations.
 
-        Use either bare, `@f.register`, or with explicit types,
+        Without types, every parameter must be annotated with a type. Use
+        either bare, `@f.register`, or with explicit types,
         `@f.register(T1, T2)`, which take precedence over annotations; or
         functools-style, `f.register(T, func)`. A union type (`int | str`)
         registers the implementation for each member. With a default
@@ -240,7 +259,8 @@ class Multimethod:
         self._children = alive
 
     def inherit(self) -> Multimethod:
-        """A multimethod for a subclass, inheriting this one's implementations.
+        """Return a multimethod for a subclass, inheriting this one's.
+
         Its own registrations are always tried first, whatever their types,
         like a method override (see docs/methods.md):
 
@@ -261,6 +281,11 @@ class Multimethod:
         return child
 
     def __getitem__(self, types: type | tuple[type, ...]) -> Callable[..., Any]:
+        """Return the implementation registered for exactly `types`.
+
+        A single type stands for a one-element tuple. Raise `KeyError` if
+        nothing is registered for them.
+        """
         if not isinstance(types, tuple):
             types = (types,)
         if types in self._registry:
@@ -270,6 +295,7 @@ class Multimethod:
     def __setitem__(
         self, types: _TypeSpec | tuple[_TypeSpec, ...], func: Any
     ) -> None:
+        """Register `func` for `types`, a single type or a tuple of them."""
         if not isinstance(types, tuple):
             types = (types,)
         types, _ = _parse_decorator_args("__setitem__()", types)
@@ -277,22 +303,23 @@ class Multimethod:
 
     @property
     def registry(self) -> Mapping[Any, Any]:
-        """A read-only view of the registered implementations, keyed by
-        signature - a bare type for a single argument, as in
-        `functools.singledispatch`, else a tuple of types."""
+        """Read-only mapping of the registered implementations, by signature.
+
+        Keyed by a bare type for a single argument, as in
+        `functools.singledispatch`, else by a tuple of types.
+        """
         return MappingProxyType(
             {sig[0] if len(sig) == 1 else sig: f for sig, f in self._registry.items()}
         )
 
     def dispatch(self, *types: type) -> Any:
-        """The implementation that a call with arguments of these types would
-        run (without calling it), as `functools.singledispatch`'s."""
+        """Return the implementation a call with arguments of `types` would run."""
         return self._lookup(types)
 
     def _is_more_specialized(
         self, sig_a: tuple[type, ...], sig_b: tuple[type, ...]
     ) -> bool:
-        """Returns True if sig_a is strictly more specialized than sig_b."""
+        """Return whether `sig_a` is strictly more specialized than `sig_b`."""
         more_specific = False
         for type_a, type_b in zip(sig_a, sig_b):
             if issubclass(type_a, type_b):
@@ -334,8 +361,11 @@ class Multimethod:
         return maximal[0][1]
 
     def _resolve(self, key: type | tuple[type, ...]) -> Callable[..., Any]:
-        """The implementation to call for `key` (a bare type for one argument,
-        else a tuple of types), adapted by `_callable` and cached."""
+        """Return the implementation to call for `key`, adapted and cached.
+
+        `key` is a bare type for one argument, else a tuple of types; see
+        `_callable` for the adaptation.
+        """
         if self._abc_token is not None and self._abc_token != get_cache_token():
             self._abc_token = get_cache_token()
             self._cache.clear()
@@ -349,10 +379,12 @@ class Multimethod:
         return func
 
     def _callable(self, func: Any) -> Any:
-        """`func` as called with this multimethod's arguments, including a
-        leading `self`/`cls` for a method: a `staticmethod` drops it, and a
-        `classmethod` gets the instance's class in its place (or the class
-        itself, already, for a `classmethod` dispatchmethod)."""
+        """Adapt `func` to be called with this multimethod's own arguments.
+
+        For a method, those start with `self`/`cls`: a `staticmethod` drops
+        it, and a `classmethod` gets the instance's class in its place (or
+        the class itself, already, for a `classmethod` dispatchmethod).
+        """
         if isinstance(func, staticmethod):
             static = func.__func__
             if not self._skip:
@@ -366,7 +398,7 @@ class Multimethod:
         return func
 
     def _lookup(self, arg_types: tuple[type, ...]) -> Any:
-        """The registered implementation for `arg_types`, uncached."""
+        """Return the registered implementation for `arg_types`, uncached."""
         if arg_types in self._registry:
             return self._registry[arg_types]
 
@@ -383,6 +415,7 @@ class Multimethod:
         raise TypeError(f"No matching implementation for types {arg_types}")
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Call the implementation chosen by the arguments' types."""
         # Fast path for one dispatched argument (see docs/performance.md).
         # `__class__`, not `type()`, so proxies like `Mock(spec=cls)`
         # dispatch as that class.
@@ -394,6 +427,7 @@ class Multimethod:
         return self._resolve(key)(*args, **kwargs)
 
     def __get__(self, instance: object | None, owner: type | None = None) -> Any:
+        """Bind to `instance` as a method, or to `owner` for a classmethod."""
         if self._binds_class:
             return MethodType(self, owner if owner is not None else type(instance))
         if instance is None or self._skip == 0:
@@ -412,8 +446,11 @@ class Multimethod:
 
 
 class _PendingInherit:
-    """Returned by `inherit()`: collects registrations until `__set_name__`
-    can find the base multimethod, then replaces itself with its child."""
+    """Placeholder returned by `inherit()`, until its class is created.
+
+    It collects registrations until `__set_name__` can find the base
+    multimethod, then replaces itself with its child.
+    """
 
     def __init__(self) -> None:
         self._registrations: list[tuple[tuple[Any, ...], Any]] = []
@@ -450,7 +487,9 @@ class _PendingInherit:
 
 
 def inherit() -> Multimethod:
-    """Like `Base.visit.inherit()`, but finds the base multimethod by looking
+    """Return a subclass's multimethod, inheriting its base class's.
+
+    Like `Base.visit.inherit()`, but finds the base multimethod by looking
     up the same attribute name on the base classes, as `super()` would:
 
         class Sub(Base):
@@ -477,10 +516,10 @@ def dispatch(  # type: ignore[overload-overlap]
 @overload
 def dispatch(func: Callable[..., Any], /) -> Multimethod: ...
 def dispatch(*types: Any) -> Any:
-    """Turn a function into a multimethod, with it as the default
-    implementation, called whenever no registered signature matches.
+    """Turn a function into a multimethod, with it as the default.
 
-    Use either bare, `@dispatch`, or with explicit types, `@dispatch(T1, T2)`,
+    The default implementation is called whenever no registered signature
+    matches. Use either bare, `@dispatch`, or with explicit types, `@dispatch(T1, T2)`,
     which take precedence over annotations, same as `.register()`. Unlike
     `.register()`, a parameter without a type annotation counts as `object`.
     """
@@ -501,9 +540,10 @@ def dispatchmethod(  # type: ignore[overload-overlap]
 @overload
 def dispatchmethod(func: Any, /) -> Multimethod: ...
 def dispatchmethod(*types: Any) -> Any:
+    """Turn a method into a multimethod, as `dispatch` does a function.
 
-    """Like `dispatch`, but decorates a method instead of a function, in the
-    same two forms (`@dispatchmethod` or `@dispatchmethod(T1, T2)`).
+    It takes the same two forms (`@dispatchmethod` or
+    `@dispatchmethod(T1, T2)`).
 
     `self` is bound automatically via the descriptor protocol and excluded
     from dispatch, so `.register(*types)` only lists the types of the

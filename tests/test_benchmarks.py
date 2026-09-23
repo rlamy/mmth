@@ -81,8 +81,10 @@ def test_mmth_dispatch_scaling_when_nothing_matches(benchmark, registry_size):
 
 @pytest.mark.parametrize("chain_length", [1, 10, 100])
 def test_mmth_dispatch_scaling_when_everything_matches(benchmark, chain_length):
-    """Every registered type is an ancestor of the (unregistered) call
-    type: the worst case for `_find_most_specialized`."""
+    """Register every ancestor of the call type, but not the type itself.
+
+    The worst case for `_find_most_specialized`.
+    """
 
     @dispatch
     def handle(x: object) -> str:

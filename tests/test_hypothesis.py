@@ -9,10 +9,12 @@ from mmth import Multimethod
 
 @st.composite
 def _multi_inheritance_dag(draw, max_size=10, max_parents=3):
-    """A class hierarchy as a DAG: each class after the first gets
-    1..max_parents unrelated direct parents among the earlier ones (so
-    `max_parents=1` gives a tree). Returns the classes and each one's
-    ancestor indices, used as an oracle independent of `issubclass`.
+    """Generate a class hierarchy as a DAG.
+
+    Each class after the first gets 1..max_parents unrelated direct parents
+    among the earlier ones (so `max_parents=1` gives a tree). Returns the
+    classes and each one's ancestor indices, used as an oracle independent
+    of `issubclass`.
 
     Parents are ordered by their position in the MRO of a "checkpoint"
     class inheriting from every class so far, since a fixed order often
@@ -62,8 +64,10 @@ def _multi_inheritance_dag(draw, max_size=10, max_parents=3):
 
 
 def _with_registered_subset(dag):
-    """Add a random subset of nodes to register to a
-    `_multi_inheritance_dag()` result, always including the root."""
+    """Add nodes to register to a `_multi_inheritance_dag()` result.
+
+    A random subset, always including the root.
+    """
     classes, ancestors = dag
     return st.sets(st.integers(min_value=0, max_value=len(classes) - 1)).map(
         lambda registered: (classes, ancestors, registered | {0})
@@ -71,8 +75,9 @@ def _with_registered_subset(dag):
 
 
 def _maximal_registered_ancestors(node, registered, ancestors):
-    """Independent oracle, using the ancestor sets tracked alongside the DAG
-    itself (see `_multi_inheritance_dag`) rather than `issubclass`.
+    """Return the registered ancestors of `node` that nothing else beats.
+
+    Computed from the ancestor sets rather than `issubclass`.
     """
     matching = [r for r in registered if r in ancestors[node]]
     return [
@@ -103,8 +108,11 @@ def test_dispatch_handles_multiple_inheritance(data, reverse_registration_order)
 
 @st.composite
 def _multi_arg_dags(draw, min_arity=2, max_arity=3, max_size=6, max_parents=3):
-    """One `_multi_inheritance_dag()` per argument position, plus a random
-    subset of signatures to register, always including the all-roots one."""
+    """Generate one `_multi_inheritance_dag()` per argument position.
+
+    Plus a random subset of signatures to register, always including the
+    all-roots one.
+    """
     arity = draw(st.integers(min_value=min_arity, max_value=max_arity))
     dags = [
         draw(_multi_inheritance_dag(max_size=max_size, max_parents=max_parents))
@@ -135,9 +143,7 @@ def _dominates(sig_a, sig_b, ancestors_lists):
 
 
 def _maximal_registered_signatures(query, registered, ancestors_lists):
-    """Independent oracle, generalizing `_maximal_registered_ancestors` to
-    multiple argument positions.
-    """
+    """Return `_maximal_registered_ancestors`, for several arguments."""
     matching = [
         sig
         for sig in registered
