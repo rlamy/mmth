@@ -22,15 +22,19 @@ dominant remaining cost: a generator expression to compute `arg_types` from
 more than the single `__class__` lookup the overwhelmingly common one-dispatched-
 argument case actually needs - true of essentially every `dispatchmethod`
 call (`self` is skipped) and most `dispatch` functions. `__call__`
-fast-paths that case, which closes almost the entire remaining gap to
-`functools.singledispatch` (itself fixed at exactly one dispatch argument,
-so it never pays this cost at all).
+fast-paths that case, halving the cost of a call on CPython (and more on
+PyPy): a cached one-argument call is then a little faster than
+`functools.singledispatch` on every supported CPython version, and several
+times faster on PyPy.
 
-`Multimethod` keeps every attribute a call touches in `__slots__`. Copying
-the default's `__name__`, `__doc__`, etc. onto the instance (as
-`functools.update_wrapper` does) otherwise stops instances sharing their
-dict's keys, which slows every attribute lookup a call makes - measured at
-~25% of a plain `dispatch` call.
+`Multimethod` keeps every attribute a call touches in `__slots__`.
+`functools.update_wrapper` accesses the instance's `__dict__` (to copy the
+default's own `__dict__`), and on CPython 3.11, 3.12 and 3.14 that moves an
+ordinary instance's attributes out of the fast inline layout that attribute
+lookups specialize for, costing 20-30% of a plain `dispatch` call. CPython
+3.13 keeps them inline anyway, so there slots don't help, and cost 3-5%: a
+method lookup on an instance whose `__dict__` slot is in use doesn't
+specialize. Slots make no difference on PyPy.
 
 ## Benchmarks
 

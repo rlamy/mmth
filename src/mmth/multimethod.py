@@ -98,7 +98,7 @@ class Multimethod:
     own multimethod to this one.
     """
 
-    # Slots keep calls fast despite update_wrapper's instance attributes
+    # Slots keep calls fast even though update_wrapper accesses `__dict__`
     # (see docs/performance.md).
     __slots__ = (
         "_registry",
