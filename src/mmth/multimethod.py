@@ -15,8 +15,8 @@ class Multimethod:
         _parent: Multimethod | None = None,
     ) -> None:
         # `_skip` (leading arguments excluded from dispatch, i.e. `self`) and
-        # `_parent` (the `override()` chain) are internal wiring: set them
-        # via `dispatchmethod` and `.override()`, which also registers the
+        # `_parent` (the `inherit()` chain) are internal wiring: set them
+        # via `dispatchmethod` and `.inherit()`, which also registers the
         # child for cache invalidation.
         self._registry: dict[tuple[type, ...], Callable[..., Any]] = {}
         self._default: Callable[..., Any] | None = None
@@ -29,7 +29,7 @@ class Multimethod:
         # which call with the same concrete types over and over. Failed
         # resolutions (ambiguous / no match) aren't cached, since raising
         # is already the slow, cold path. `_children` lets a mutation here
-        # invalidate every override()-chained descendant's cache too, since
+        # invalidate every inherit()-chained descendant's cache too, since
         # those can fall through to this multimethod's registry. Cache keys
         # are a bare type for the common one-argument case (see `_resolve`)
         # rather than always a one-element tuple, to avoid its allocation
@@ -76,7 +76,7 @@ class Multimethod:
                 alive.append(ref)
         self._children = alive
 
-    def override(self) -> Multimethod:
+    def inherit(self) -> Multimethod:
         """A multimethod chained to this one, for a subclass to replace one
         implementation while inheriting everything else - unlike
         `.register()`, which adds a peer entry compared against every other
@@ -92,7 +92,7 @@ class Multimethod:
         call `super()` normally, since it's an ordinary method either way:
 
             class Sub(Base):
-                visit = Base.visit.override()
+                visit = Base.visit.inherit()
 
                 @visit.register(SomeType)
                 def _(self, x):
@@ -189,7 +189,7 @@ class Multimethod:
         if func is not None:
             return func
 
-        # 3. Fall through to a parent multimethod, if chained via `override()`
+        # 3. Fall through to a parent multimethod, if chained via `inherit()`
         if self._parent is not None:
             key: type | tuple[type, ...] = (
                 arg_types[0] if len(arg_types) == 1 else arg_types
@@ -234,8 +234,8 @@ class Multimethod:
         return True
 
 
-class _PendingOverride:
-    """Placeholder returned by `override()`; collects `.register(*types)`
+class _PendingInherit:
+    """Placeholder returned by `inherit()`; collects `.register(*types)`
     calls, then replaces itself with a real `Multimethod` - chained to
     whichever base class defines the same attribute name - once Python
     calls `__set_name__` on it at class-creation time."""
@@ -263,44 +263,45 @@ class _PendingOverride:
                 break
         if not isinstance(parent, Multimethod):
             raise TypeError(
-                f"override() found no base class of {owner.__name__} "
+                f"inherit() found no base class of {owner.__name__} "
                 f"defining a Multimethod named {name!r}"
             )
-        dispatcher = parent.override()
+        dispatcher = parent.inherit()
         for types, func in self._registrations:
             dispatcher.register(*types)(func)
         setattr(owner, name, dispatcher)
 
 
-def override() -> Multimethod:
-    """A multimethod override for a subclass, with the base multimethod found
-    automatically instead of spelled out: assign the result to the *same*
-    attribute name the base class uses, and Python's own class-creation
-    machinery (`__set_name__`) fills in the rest once the class body
-    finishes, by looking up that name on the base classes - exactly the
-    lookup `super()` would do. Register implementations with `.register(*types)`
-    exactly like `dispatchmethod` itself:
+def inherit() -> Multimethod:
+    """A subclass's own multimethod, inheriting every implementation of the
+    base class's, with the base multimethod found automatically instead of
+    spelled out: assign the result to the *same* attribute name the base
+    class uses, and Python's own class-creation machinery (`__set_name__`)
+    fills in the rest once the class body finishes, by looking up that name
+    on the base classes - exactly the lookup `super()` would do. Register
+    implementations with `.register(*types)` exactly like `dispatchmethod`
+    itself; they take precedence over the inherited ones:
 
         class Sub(Base):
-            visit = override()
+            visit = inherit()
 
             @visit.register(SomeType)
             def _(self, x):
                 ...
                 return super().visit(x)
 
-    Equivalent to `Base.visit.override()` (see `Multimethod.override`), for
+    Equivalent to `Base.visit.inherit()` (see `Multimethod.inherit`), for
     the common case where the base multimethod is simply inherited - use the
     explicit form instead if the name differs from the base's, or the base
     to chain to isn't the one plain attribute lookup would find.
     """
-    # Declared as returning Multimethod (not _PendingOverride, its actual
+    # Declared as returning Multimethod (not _PendingInherit, its actual
     # runtime type here) so that type checkers accept both the assignment
     # to an attribute overriding a Multimethod-typed base one, and the
     # .register(*types) calls that follow - by the time anything other
     # than __set_name__ touches the attribute, it really has become one.
     # (The same kind of deliberate mismatch as dataclasses.field()'s.)
-    return _PendingOverride()  # type: ignore[return-value]
+    return _PendingInherit()  # type: ignore[return-value]
 
 
 def dispatch(*types: Any) -> Any:
@@ -324,8 +325,9 @@ def dispatchmethod(func: Callable[..., Any]) -> Multimethod:
     from dispatch, so `.register(*types)` only lists the types of the
     remaining arguments.
 
-    A subclass can replace a single implementation for itself, without touching the
-    base class, via `override()` (see `override` and `Multimethod.override`).
+    A subclass can replace a single implementation for itself, without
+    touching the base class, via `inherit()` (see `inherit` and
+    `Multimethod.inherit`).
 
     ```python
     class Evaluator:

@@ -1,6 +1,6 @@
 import pytest
 
-from mmth import Multimethod, dispatchmethod, override
+from mmth import Multimethod, dispatchmethod, inherit
 
 
 class Node:
@@ -97,7 +97,7 @@ def test_dispatchmethod_rejects_non_callable():
         dispatchmethod(42)
 
 
-def test_dispatchmethod_override_replaces_one_implementation():
+def test_dispatchmethod_inherit_replaces_one_implementation():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
@@ -108,7 +108,7 @@ def test_dispatchmethod_override_replaces_one_implementation():
             return node.value
 
     class PickyHandler(Handler):
-        visit = Handler.visit.override()
+        visit = Handler.visit.inherit()
 
         @visit.register(Num)
         def _(self, node):
@@ -126,7 +126,7 @@ def test_dispatchmethod_override_replaces_one_implementation():
     assert PickyHandler().visit(Add(Num(1), Num(2))) == "default"
 
 
-def test_dispatchmethod_override_can_replace_several_implementations():
+def test_dispatchmethod_inherit_can_replace_several_implementations():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
@@ -137,7 +137,7 @@ def test_dispatchmethod_override_can_replace_several_implementations():
             return node.value
 
     class PickyHandler(Handler):
-        visit = Handler.visit.override()
+        visit = Handler.visit.inherit()
 
         @visit.register(Num)
         def _(self, node):
@@ -155,7 +155,7 @@ def test_dispatchmethod_override_can_replace_several_implementations():
     assert PickyHandler().visit(Node()) == "default"
 
 
-def test_dispatchmethod_override_wins_regardless_of_relative_specificity():
+def test_dispatchmethod_inherit_wins_regardless_of_relative_specificity():
     # Handler registers the *narrower* type (Num); PickyHandler's override
     # registers the *broader* one (Node). A plain multimethod comparing
     # (PickyHandler, Node) against (Handler, Num) as peers would be
@@ -172,7 +172,7 @@ def test_dispatchmethod_override_wins_regardless_of_relative_specificity():
             return "handler-num"
 
     class PickyHandler(Handler):
-        visit = Handler.visit.override()
+        visit = Handler.visit.inherit()
 
         @visit.register(Node)
         def _(self, node):
@@ -182,7 +182,7 @@ def test_dispatchmethod_override_wins_regardless_of_relative_specificity():
     assert PickyHandler().visit(Num(1)) == "picky-any"
 
 
-def test_override_function_finds_base_multimethod_automatically():
+def test_inherit_function_finds_base_multimethod_automatically():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
@@ -193,7 +193,7 @@ def test_override_function_finds_base_multimethod_automatically():
             return node.value
 
     class PickyHandler(Handler):
-        visit = override()
+        visit = inherit()
 
         @visit.register(Num)
         def _(self, node):
@@ -209,14 +209,14 @@ def test_override_function_finds_base_multimethod_automatically():
     assert isinstance(PickyHandler.visit, Multimethod)
 
 
-def test_override_function_collects_multiple_registrations():
+def test_inherit_function_collects_multiple_registrations():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
             return "default"
 
     class PickyHandler(Handler):
-        visit = override()
+        visit = inherit()
 
         @visit.register(Num)
         def _(self, node):
@@ -231,11 +231,11 @@ def test_override_function_collects_multiple_registrations():
     assert PickyHandler().visit(Node()) == "default"
 
 
-def test_override_function_raises_without_a_matching_base():
+def test_inherit_function_raises_without_a_matching_base():
     # exercise __set_name__ directly rather than via a real class statement:
     # CPython wraps __set_name__ exceptions in a RuntimeError on some
     # versions (and not others), which isn't what this test cares about.
-    pending = override()
+    pending = inherit()
 
     class Orphan:
         pass

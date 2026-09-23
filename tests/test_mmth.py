@@ -272,13 +272,13 @@ def test_cache_invalidated_by_later_registration():
     assert speak(dog) == "Woof!"
 
 
-def test_cache_invalidated_across_override_chain():
+def test_cache_invalidated_across_inherit_chain():
     # a mutation to the *parent* multimethod must invalidate an
-    # override()-chained child's cache too, since the child can fall
+    # inherit()-chained child's cache too, since the child can fall
     # through to the parent's registry
     parent = Multimethod()
     parent.register(object)(lambda x: "parent-default")
-    child = parent.override()
+    child = parent.inherit()
 
     class Node:
         pass

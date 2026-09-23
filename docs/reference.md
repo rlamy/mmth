@@ -6,4 +6,4 @@
         - dispatch
         - Multimethod
         - dispatchmethod
-        - override
+        - inherit

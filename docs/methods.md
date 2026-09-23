@@ -67,24 +67,25 @@ Evaluator().visit(Add(Num(1), Num(2)))  # 3
 ## Overriding One Implementation in a Subclass
 
 Subclassing a `dispatchmethod` isn't standard multiple dispatch: a subclass
-overriding one implementation should win *regardless* of how its registered type
-compares in specificity to what the base class registered - exactly like a
-plain method override, which doesn't care what a sibling method does.
+overriding one implementation should win *regardless* of how its registered
+type compares in specificity to what the base class registered - exactly
+like a plain method override, which doesn't care what a sibling method
+does.
 Comparing `self`'s type against the other arguments as peers (as `dispatch`
 does for genuine multi-argument dispatch) gets this wrong: if a subclass
 registers a *broader* type than the base class did, "most specific match
 wins" has no clear answer and either picks the wrong one or raises
-"ambiguous dispatch". `override()` avoids this entirely, by not comparing
+"ambiguous dispatch". `inherit()` avoids this entirely, by not comparing
 the two at all: assign it as the subclass's own attribute (under the same
 name the base class uses), then build it up with `.register(*types)`
 exactly like `dispatchmethod` itself. The subclass's own multimethod is
 always tried first, in full, before ever falling through to the base one:
 
 ```python
-from mmth import override
+from mmth import inherit
 
 class StrictEvaluator(Evaluator):
-    visit = override()
+    visit = inherit()
 
     @visit.register(Num)
     def _(self, node):
@@ -96,21 +97,21 @@ Evaluator().visit(Num(-1))         # -1, unaffected
 StrictEvaluator().visit(Num(-1))   # ValueError: negative numbers not allowed
 ```
 
-`override()` finds the base multimethod itself - the same lookup `super()`
+`inherit()` finds the base multimethod itself - the same lookup `super()`
 would do, walking `StrictEvaluator`'s bases for a `visit` of their own -
 once Python calls `__set_name__` on it at class-creation time. `super()`
 works normally inside the registered function, because it's still an
-ordinary method of `StrictEvaluator`; `override()` only changes which
+ordinary method of `StrictEvaluator`; `inherit()` only changes which
 multimethod `.register()` adds it to. Every other `Evaluator` subclass, and
 every other node type on `StrictEvaluator`, keeps using the base
 registrations unchanged.
 
 If the attribute name differs from the base's, or the multimethod to chain
 to isn't the one plain attribute lookup would find, spell it out instead
-with `Base.visit.override()` (see `Multimethod.override`) - `override()` is
+with `Base.visit.inherit()` (see `Multimethod.inherit`) - `inherit()` is
 just that, with the base found automatically for the common case.
 
-(On Python 3.11, an error raised while resolving `override()` - e.g. no
+(On Python 3.11, an error raised while resolving `inherit()` - e.g. no
 base class actually defines that name - arrives wrapped in a
 `RuntimeError` with the original exception as its `__cause__`, rather than
 directly; this is a difference in how CPython itself handles `__set_name__`

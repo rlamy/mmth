@@ -327,7 +327,7 @@ add[str, str] = lambda a, b: f"{a}{b}"
 4. Error if no match and no default (bare `Multimethod()`)
 
 Each `Multimethod` memoizes a successful resolution by argument types,
-invalidated on `register()`/`__setitem__()` (cascading to `override()`
+invalidated on `register()`/`__setitem__()` (cascading to `inherit()`
 descendants) - see docs/performance.md.
 
 ### Method Dispatch
@@ -335,16 +335,17 @@ descendants) - see docs/performance.md.
 `dispatchmethod` is `dispatch` for use on a method: `self` is bound
 automatically via the descriptor protocol and excluded from dispatch, so
 `.register(*types)` only needs the types of the remaining arguments. A
-subclass replaces one implementation for itself via `override()` (chains
+subclass replaces one implementation for itself via `inherit()` (chains
 to a separate multimethod, tried first, so the subclass always wins
 regardless of relative type specificity - unlike standard multiple
-dispatch) rather than `.register()` on the shared table; `override()`
+dispatch) rather than `.register()` on the shared table; `inherit()`
 finds the base multimethod itself via `__set_name__` (same lookup
-`super()` would do), or use `Base.visit.override()` directly when that
+`super()` would do), or use `Base.visit.inherit()` directly when that
 auto-lookup isn't what you want. See docs/methods.md ("Method Dispatch"
 and "Overriding One Implementation in a Subclass") for the full examples,
-including using `dispatchmethod` to replace the Visitor pattern (dispatching straight on a node's type
-instead of an `accept()`/`visit_ElementType()` callback pair).
+including using `dispatchmethod` to replace the Visitor pattern
+(dispatching straight on a node's type instead of an
+`accept()`/`visit_ElementType()` callback pair).
 
 ```python
 class Evaluator:

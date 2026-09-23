@@ -114,9 +114,9 @@ def test_mmth_dispatch_scaling_when_everything_matches(benchmark, chain_length):
 
 
 @pytest.mark.parametrize("chain_depth", [1, 10, 100])
-def test_dispatchmethod_override_chain_depth(benchmark, chain_depth):
+def test_dispatchmethod_inherit_chain_depth(benchmark, chain_depth):
     """`_resolve` falls through to `self._parent._resolve(...)` on a miss -
-    this measures how that cost scales with how many `.override()` levels
+    this measures how that cost scales with how many `.inherit()` levels
     deep a call has to fall through before finding a match at the base.
     """
 
@@ -127,6 +127,6 @@ def test_dispatchmethod_override_chain_depth(benchmark, chain_depth):
 
     cls = Base
     for i in range(chain_depth):
-        cls = type(f"Level{i}", (cls,), {"visit": cls.visit.override()})
+        cls = type(f"Level{i}", (cls,), {"visit": cls.visit.inherit()})
 
     benchmark(cls().visit, object())
