@@ -242,3 +242,85 @@ def test_inherit_function_raises_without_a_matching_base():
 
     with pytest.raises(TypeError, match="no base class of Orphan"):
         pending.__set_name__(Orphan, "visit")
+
+
+def test_dispatchmethod_register_bare_uses_annotations_past_self():
+    class Evaluator:
+        @dispatchmethod
+        def visit(self, node: Node):
+            return "default"
+
+        @visit.register
+        def _(self, node: Num):
+            return node.value
+
+    assert Evaluator().visit(Num(3)) == 3
+    assert Evaluator().visit(Add(Num(1), Num(2))) == "default"
+    assert list(Evaluator.visit._registry) == [(Node,), (Num,)]
+
+
+def test_inherit_register_bare_uses_annotations():
+    class Handler:
+        @dispatchmethod
+        def visit(self, node: Node):
+            return "default"
+
+    class PickyHandler(Handler):
+        visit = inherit()
+
+        @visit.register
+        def _(self, node: Num):
+            return "picky-num"
+
+    class ExplicitHandler(Handler):
+        visit = Handler.visit.inherit()
+
+        @visit.register
+        def _(self, node: Num):
+            return "explicit-num"
+
+    assert PickyHandler().visit(Num(1)) == "picky-num"
+    assert ExplicitHandler().visit(Num(1)) == "explicit-num"
+    assert PickyHandler().visit(Node()) == "default"
+
+
+def test_dispatchmethod_with_explicit_types():
+    class Evaluator:
+        @dispatchmethod(Node)
+        def visit(self, node):
+            return "default"
+
+        @visit.register(Num)
+        def _(self, node):
+            return node.value
+
+    assert Evaluator.visit[Node] is Evaluator.visit.__wrapped__
+    assert Evaluator().visit(Num(3)) == 3
+    assert Evaluator().visit(Node()) == "default"
+
+
+def test_dispatchmethod_with_empty_parentheses_uses_annotations():
+    class Evaluator:
+        @dispatchmethod()
+        def visit(self, node: Node):
+            return "default"
+
+    assert Evaluator.visit[Node] is Evaluator.visit.__wrapped__
+
+
+def test_dispatchmethod_rejects_non_types():
+    with pytest.raises(TypeError, match=r"dispatchmethod\(\) expected types"):
+        dispatchmethod(42)
+
+
+def test_inherit_register_requires_subclasses_of_the_base_default():
+    class Handler:
+        @dispatchmethod
+        def visit(self, node: Node):
+            return "default"
+
+    class PickyHandler(Handler):
+        visit = Handler.visit.inherit()
+
+    with pytest.raises(TypeError, match="expected subclasses of the default"):
+        PickyHandler.visit.register(int)(lambda self, node: "int")

@@ -283,6 +283,7 @@ mmth/
 │   ├── test_method.py    # dispatchmethod test suite
 │   ├── test_abc.py       # dispatch with real/virtual/structural ABC subclasses
 │   ├── test_hypothesis.py # property-based specialization tests
+│   ├── test_functools_compat.py # single dispatch vs functools.singledispatch
 │   └── test_benchmarks.py # pytest-benchmark performance benchmarks (excluded by default)
 ├── pyproject.toml        # Project config
 ├── uv.lock               # Locked dependency versions (uv)
@@ -303,7 +304,7 @@ mmth/
 
 ```python
 @dispatch
-def add(a: int, b: int) -> int:
+def add(a: object, b: object) -> object:
     """Default implementation."""
     return a + b
 
@@ -311,6 +312,10 @@ def add(a: int, b: int) -> int:
 def add_int_float(a: int, b: float) -> float:
     """Specialized for int + float."""
     return float(a) + b
+
+@add.register  # types from annotations (all required, unlike @dispatch)
+def add_float_int(a: float, b: int) -> float:
+    return a + float(b)
 
 # Access an implementation
 impl = add[int, float]
@@ -329,6 +334,13 @@ add[str, str] = lambda a, b: f"{a}{b}"
 Each `Multimethod` memoizes a successful resolution by argument types,
 invalidated on `register()`/`__setitem__()` (cascading to `inherit()`
 descendants) - see docs/performance.md.
+
+Registered types must be subclasses of the default's (annotated or
+explicit) signature. With one dispatched argument, behaviour matches
+`functools.singledispatch`/`singledispatchmethod` except where
+docs/specification.md ("Differences from `functools.singledispatch`") says
+otherwise; `tests/test_functools_compat.py` checks this against functools
+itself, so keep it in sync with any new single-dispatch behaviour.
 
 ### Method Dispatch
 

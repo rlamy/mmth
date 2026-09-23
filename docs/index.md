@@ -14,7 +14,7 @@ pip install mmth
 from mmth import dispatch
 
 @dispatch
-def add(a: int, b: int) -> int:
+def add(a: object, b: object) -> object:
     return a + b
 
 @add.register(int, float)
