@@ -116,6 +116,9 @@ uv run tox -e benchmark  # performance benchmarks (not part of the default envli
 - Use absolute imports: `from mmth import dispatch`
 - Group imports in order: stdlib, third-party, local
 - Do not use wildcard imports (`from mmth import *`)
+- Do not use `from __future__ import annotations` in mmth's own code; use
+  `typing.Self` for the enclosing class, or else quote forward references
+  (`-> "Multimethod"`). mmth still supports it in user code.
 - Sort imports with `ruff` (automatic)
 
 ```python

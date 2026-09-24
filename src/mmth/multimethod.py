@@ -1,7 +1,5 @@
 """Multimethods: functions dispatched on the types of their arguments."""
 
-from __future__ import annotations
-
 import functools
 import inspect
 import itertools
@@ -13,6 +11,7 @@ from typing import (
     Annotated,
     Any,
     Callable,
+    Self,
     TypeVar,
     Union,
     _SpecialForm,
@@ -119,7 +118,7 @@ class Multimethod:
         func: Callable[..., Any] | None = None,
         *types: _TypeSpec,
         _skip: int = 0,
-        _parent: Multimethod | None = None,
+        _parent: Self | None = None,
         _binds_class: bool = False,
     ) -> None:
         """Create a multimethod with `func` as its default implementation.
@@ -286,7 +285,7 @@ class Multimethod:
                 alive.append(ref)
         self._children = alive
 
-    def inherit(self) -> Multimethod:
+    def inherit(self) -> Self:
         """Return a multimethod for a subclass, inheriting this one's.
 
         Its own registrations are always tried first, whatever their types,
@@ -300,7 +299,7 @@ class Multimethod:
                     ...
                     return super().visit(x)
         """
-        child = Multimethod(
+        child = type(self)(
             _skip=self._skip, _parent=self, _binds_class=self._binds_class
         )
         if self._abc_token is not None:
