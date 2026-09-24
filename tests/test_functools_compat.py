@@ -13,9 +13,10 @@ from unittest import mock
 
 import pytest
 from hypothesis import given
-from test_hypothesis import _multi_inheritance_dag, _with_registered_subset
 
 from mmth import dispatch, dispatchmethod, inherit
+
+from strategies import multi_inheritance_dag, with_registered_subset
 
 
 def _both(build):
@@ -35,7 +36,7 @@ class Dog(Animal):
     pass
 
 
-@given(_multi_inheritance_dag(max_parents=1).flatmap(_with_registered_subset))
+@given(multi_inheritance_dag(max_parents=1).flatmap(with_registered_subset))
 def test_matches_functools_on_single_inheritance_trees(data):
     # with single inheritance there are no ties to break, so mmth's
     # ambiguity rule never kicks in and both must pick the same thing

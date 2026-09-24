@@ -262,6 +262,9 @@ def __call__(self, *args, **kwargs):
 - All new functionality must have tests
 - Tests should be in `tests/test_*.py`
 - **Do not use test classes** - use standalone functions
+- Never import from a test file (`test_*.py`); helpers or Hypothesis
+  strategies used by more than one test module go in a separate file, e.g.
+  `tests/strategies.py`
 - Test names should be descriptive: `test_feature_name`
 - Use assertions with clear failure messages
 
@@ -317,6 +320,7 @@ mmth/
 │   ├── test_mmth.py      # dispatch/Multimethod test suite
 │   ├── test_method.py    # dispatchmethod test suite
 │   ├── test_abc.py       # dispatch with real/virtual/structural ABC subclasses
+│   ├── strategies.py     # Hypothesis strategies shared by test modules
 │   ├── test_hypothesis.py # property-based specialization tests
 │   ├── test_functools_compat.py # single dispatch vs functools.singledispatch
 │   └── test_benchmarks.py # pytest-benchmark performance benchmarks (excluded by default)

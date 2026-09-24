@@ -52,6 +52,9 @@ target-version = "py311"
 select = ["D", "E", "F", "I", "N", "W"]
 ignore = ["E501"]
 
+[tool.ruff.lint.isort]
+known-local-folder = ["strategies"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"
 
