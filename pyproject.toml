@@ -32,6 +32,8 @@ Documentation = "https://mmth.readthedocs.io"
 [project.optional-dependencies]
 dev = [
     "hypothesis>=6.168.0",
+    "mypy>=1.18",
+    "pyright>=1.1.400",
     "pytest>=8",
     "pytest-benchmark>=5.3.0",
     "ruff>=0.6",
