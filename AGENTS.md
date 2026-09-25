@@ -330,7 +330,7 @@ mmth/
 ├── uv.lock               # Locked dependency versions (uv)
 ├── .python-version       # Default interpreter pin (uv)
 ├── tox.ini               # Test/lint envs (used locally and in CI)
-├── docs/                 # MkDocs sources (spec, methods, performance, API reference, development)
+├── docs/                 # MkDocs sources (spec, methods, typing, performance, API reference, development)
 ├── mkdocs.yml            # MkDocs Material + mkdocstrings config
 ├── .readthedocs.yaml     # Read the Docs build config
 ├── README.md             # Landing page; links to the hosted docs
