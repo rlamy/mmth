@@ -8,9 +8,13 @@ from abc import get_cache_token
 from collections.abc import Mapping
 from types import MappingProxyType, MethodType, NoneType, UnionType
 from typing import (
+    TYPE_CHECKING,
     Annotated,
     Any,
     Callable,
+    Concatenate,
+    Generic,
+    ParamSpec,
     Self,
     TypeVar,
     Union,
@@ -26,6 +30,19 @@ from typing import (
 _Registered = Any
 # `_SpecialForm` is how mypy types `Optional[X]`, `Union[...]`, `Any` etc.
 _TypeSpec = type | UnionType | TypeVar | _SpecialForm | None
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+_S = TypeVar("_S")
+_T1 = TypeVar("_T1")
+_T2 = TypeVar("_T2")
+_T3 = TypeVar("_T3")
+# Any implementation must return what the default does; its parameters can
+# only be checked at runtime, being narrower than the default's.
+# (Quoted: `classmethod` isn't subscriptable at runtime.)
+_Impl = Union[
+    Callable[..., _R], "classmethod[Any, ..., _R]", "staticmethod[..., _R]"
+]
 
 
 def _classes(t: Any) -> tuple[type, ...] | None:
@@ -88,7 +105,7 @@ def _expand(types: tuple[Any, ...]) -> list[tuple[type, ...]]:
     return list(itertools.product(*(_classes(t) or () for t in types)))
 
 
-class Multimethod:
+class Multimethod(Generic[_P, _R]):
     """A function whose implementation is chosen by its arguments' types.
 
     Usually created with `dispatch` or `dispatchmethod`. Implementations are
@@ -113,12 +130,34 @@ class Multimethod:
         "__weakref__",
     )
 
+    if TYPE_CHECKING:
+        # Set by `functools.update_wrapper`, unless there's no default.
+        __wrapped__: Callable[_P, _R]
+
+    @overload
+    def __init__(
+        self: "Multimethod[..., Any]",
+        func: None = None,
+        *,
+        _skip: int = 0,
+        _parent: "Multimethod[..., Any] | None" = None,
+        _binds_class: bool = False,
+    ) -> None: ...
+    @overload
     def __init__(
         self,
-        func: Callable[..., Any] | None = None,
+        func: Callable[_P, _R],
         *types: _TypeSpec,
         _skip: int = 0,
-        _parent: Self | None = None,
+        _parent: "Multimethod[..., Any] | None" = None,
+        _binds_class: bool = False,
+    ) -> None: ...
+    def __init__(
+        self,
+        func: Any = None,
+        *types: _TypeSpec,
+        _skip: int = 0,
+        _parent: "Multimethod[..., Any] | None" = None,
         _binds_class: bool = False,
     ) -> None:
         """Create a multimethod with `func` as its default implementation.
@@ -237,14 +276,32 @@ class Multimethod:
 
     # The types-first order matters: a type is itself callable, so
     # `register(int)` would otherwise match the bare-decorator overload.
+    # Up to 3 classes, the implementation is checked against them (see
+    # `_Register`); other types, like unions, only check its return type.
     @overload
-    def register(self, *types: _TypeSpec) -> Callable[[Any], _Registered]: ...
+    def register(  # type: ignore[overload-overlap]
+        self, t1: type[_T1], /
+    ) -> "_Register[[_T1], Callable[_P, Any], _R]": ...
     @overload
-    def register(self, func: Any, /) -> _Registered: ...
+    def register(  # type: ignore[overload-overlap]
+        self, t1: type[_T1], t2: type[_T2], /
+    ) -> "_Register[[_T1, _T2], Callable[_P, Any], _R]": ...
     @overload
-    def register(self, cls: _TypeSpec, func: Any, /) -> _Registered: ...
+    def register(  # type: ignore[overload-overlap]
+        self, t1: type[_T1], t2: type[_T2], t3: type[_T3], /
+    ) -> "_Register[[_T1, _T2, _T3], Callable[_P, Any], _R]": ...
     @overload
-    def register(self, *types: _TypeSpec, func: Any) -> _Registered: ...
+    def register(self, *types: _TypeSpec) -> Callable[[_Impl[_R]], _Registered]: ...
+    @overload
+    def register(self, func: _Impl[_R], /) -> _Registered: ...
+    @overload
+    def register(self, cls: type[_T1], func: Callable[[_T1], _R], /) -> _Registered: ...
+    @overload
+    def register(
+        self, cls: UnionType | TypeVar | _SpecialForm | None, func: _Impl[_R], /
+    ) -> _Registered: ...
+    @overload
+    def register(self, *types: _TypeSpec, func: _Impl[_R]) -> _Registered: ...
     def register(self, *types: Any, func: Any = None) -> Any:
         """Register an implementation for the given types, or its annotations.
 
@@ -299,7 +356,7 @@ class Multimethod:
                     ...
                     return super().visit(x)
         """
-        child = type(self)(
+        child: Self = type(self)(
             _skip=self._skip, _parent=self, _binds_class=self._binds_class
         )
         if self._abc_token is not None:
@@ -309,7 +366,7 @@ class Multimethod:
 
     def __getitem__(
         self, types: _TypeSpec | tuple[_TypeSpec, ...]
-    ) -> Callable[..., Any]:
+    ) -> Callable[..., _R]:
         """Return the implementation registered for exactly `types`.
 
         A single type stands for a one-element tuple. For a union, the same
@@ -325,7 +382,7 @@ class Multimethod:
         raise KeyError(f"No implementation registered for {types}")
 
     def __setitem__(
-        self, types: _TypeSpec | tuple[_TypeSpec, ...], func: Any
+        self, types: _TypeSpec | tuple[_TypeSpec, ...], func: _Impl[_R]
     ) -> None:
         """Register `func` for `types`, a single type or a tuple of them."""
         if not isinstance(types, tuple):
@@ -334,7 +391,7 @@ class Multimethod:
         self._register("__setitem__()", types, func)
 
     @property
-    def registry(self) -> Mapping[Any, Any]:
+    def registry(self) -> Mapping[Any, Callable[..., _R]]:
         """Read-only mapping of the registered implementations, by signature.
 
         Keyed by a bare type for a single argument, as in
@@ -344,7 +401,7 @@ class Multimethod:
             {sig[0] if len(sig) == 1 else sig: f for sig, f in self._registry.items()}
         )
 
-    def dispatch(self, *types: _TypeSpec) -> Any:
+    def dispatch(self, *types: _TypeSpec) -> Callable[..., _R]:
         """Return the implementation a call with arguments of `types` would run."""
         types, _ = _parse_decorator_args("dispatch()", types)
         classes = [_classes(t) for t in types]
@@ -450,7 +507,7 @@ class Multimethod:
 
         raise TypeError(f"No matching implementation for types {arg_types}")
 
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+    def __call__(self, *args: _P.args, **kwargs: _P.kwargs) -> _R:
         """Call the implementation chosen by the arguments' types."""
         # Fast path for one dispatched argument (see docs/performance.md).
         # `__class__`, not `type()`, so proxies like `Mock(spec=cls)`
@@ -479,6 +536,98 @@ class Multimethod:
             if not issubclass(arg_type, sig_type):
                 return False
         return True
+
+
+if TYPE_CHECKING:
+    _T = TypeVar("_T")
+    _P2 = ParamSpec("_P2")
+    _R2 = TypeVar("_R2")
+    _Q = ParamSpec("_Q")
+    _D = TypeVar("_D", covariant=True)
+
+    # What `register(*types)` returns, for type checkers only. The check that
+    # the default `_D` accepts the registered types `_Q` has to wait until
+    # here: in `register()` itself, mypy and pyright would solve `_Q` from
+    # the default, and so demand implementations accept the default's types.
+    class _Register(Generic[_Q, _D, _R]):
+        def __call__(
+            self: "_Register[_P2, Callable[_P2, Any], _R]",
+            func: Callable[_P2, _R],
+            /,
+        ) -> _Registered: ...
+
+    # The same for a method, whose implementations also take `self`, or
+    # `cls`, typed only by whichever class they're defined in; or neither,
+    # for a staticmethod.
+    class _MethodRegister(Generic[_Q, _D, _R]):
+        @overload
+        def __call__(
+            self: "_MethodRegister[_P2, Callable[_P2, Any], _R]",
+            func: Callable[Concatenate[Any, _P2], _R],
+            /,
+        ) -> _Registered: ...
+        @overload
+        def __call__(
+            self: "_MethodRegister[_P2, Callable[_P2, Any], _R]",
+            func: Callable[_P2, _R],
+            /,
+        ) -> _Registered: ...
+        def __call__(self, func: Any, /) -> _Registered: ...
+
+    # What `dispatchmethod` returns, for type checkers only: at runtime it's
+    # a `Multimethod` whose `__get__` binds depending on `_skip`/`_binds_class`.
+    # Type checkers pass `dispatchmethod` the function under a `@classmethod`
+    # or `@staticmethod`, so it's told apart by its first parameter.
+    class _Method(Multimethod[Concatenate[_S, _P], _R]):
+        @overload  # type: ignore[override]
+        def __get__(
+            self: "_Method[type[_T], _P2, _R2]",
+            instance: object,
+            owner: type | None = None,
+        ) -> Callable[_P2, _R2]: ...
+        @overload
+        def __get__(self, instance: None, owner: type | None = None) -> Self: ...
+        @overload
+        def __get__(
+            self, instance: _S, owner: type | None = None
+        ) -> Callable[_P, _R]: ...
+        @overload
+        def __get__(self, instance: object, owner: type | None = None) -> Self: ...
+        def __get__(self, instance: Any, owner: Any = None) -> Any: ...
+
+        @overload  # type: ignore[override]
+        def register(  # type: ignore[overload-overlap]
+            self, t1: type[_T1], /
+        ) -> "_MethodRegister[[_T1], Callable[_P, Any], _R]": ...
+        @overload
+        def register(  # type: ignore[overload-overlap]
+            self, t1: type[_T1], t2: type[_T2], /
+        ) -> "_MethodRegister[[_T1, _T2], Callable[_P, Any], _R]": ...
+        @overload
+        def register(  # type: ignore[overload-overlap]
+            self, t1: type[_T1], t2: type[_T2], t3: type[_T3], /
+        ) -> "_MethodRegister[[_T1, _T2, _T3], Callable[_P, Any], _R]": ...
+        @overload
+        def register(self, *types: _TypeSpec) -> Callable[[_Impl[_R]], _Registered]: ...
+        @overload
+        def register(self, func: _Impl[_R], /) -> _Registered: ...
+        @overload
+        def register(
+            self, cls: type[_T1], func: Callable[[Any, _T1], _R], /
+        ) -> _Registered: ...
+        @overload
+        def register(
+            self, cls: type[_T1], func: Callable[[_T1], _R], /
+        ) -> _Registered: ...
+        @overload
+        def register(
+            self, cls: UnionType | TypeVar | _SpecialForm | None, func: _Impl[_R], /
+        ) -> _Registered: ...
+        @overload
+        def register(self, *types: _TypeSpec, func: _Impl[_R]) -> _Registered: ...
+        def register(  # type: ignore[override]
+            self, *types: Any, func: Any = None
+        ) -> Any: ...
 
 
 class _PendingInherit:
@@ -522,7 +671,7 @@ class _PendingInherit:
         setattr(owner, name, dispatcher)
 
 
-def inherit() -> Multimethod:
+def inherit() -> "_Method[Any, ..., Any]":
     """Return a subclass's multimethod, inheriting its base class's.
 
     Like `Base.visit.inherit()`, but finds the base multimethod by looking
@@ -539,7 +688,8 @@ def inherit() -> Multimethod:
     Use `Base.visit.inherit()` directly when that lookup isn't what you want.
     """
     # Typed as the Multimethod it becomes at class creation, so type checkers
-    # accept the attribute and its `.register()` calls (cf. dataclasses.field).
+    # accept the attribute and its `.register()` calls (cf. dataclasses.field),
+    # but with any signature: only the caller knows the base's.
     return _PendingInherit()  # type: ignore[return-value]
 
 
@@ -548,9 +698,9 @@ def inherit() -> Multimethod:
 @overload
 def dispatch(  # type: ignore[overload-overlap]
     *types: _TypeSpec,
-) -> Callable[[Callable[..., Any]], Multimethod]: ...
+) -> Callable[[Callable[_P, _R]], Multimethod[_P, _R]]: ...
 @overload
-def dispatch(func: Callable[..., Any], /) -> Multimethod: ...
+def dispatch(func: Callable[_P, _R], /) -> Multimethod[_P, _R]: ...
 def dispatch(*types: Any) -> Any:
     """Turn a function into a multimethod, with it as the default.
 
@@ -562,7 +712,7 @@ def dispatch(*types: Any) -> Any:
     """
     types, func = _parse_decorator_args("dispatch()", types)
 
-    def decorator(func: Callable[..., Any]) -> Multimethod:
+    def decorator(func: Callable[..., Any]) -> Multimethod[..., Any]:
         if not _is_function(func):
             raise TypeError(f"dispatch() expected a function, got {func!r}")
         return Multimethod(func, *types)
@@ -573,9 +723,11 @@ def dispatch(*types: Any) -> Any:
 @overload
 def dispatchmethod(  # type: ignore[overload-overlap]
     *types: _TypeSpec,
-) -> Callable[[Any], Multimethod]: ...
+) -> Callable[[Callable[Concatenate[_S, _P], _R]], "_Method[_S, _P, _R]"]: ...
 @overload
-def dispatchmethod(func: Any, /) -> Multimethod: ...
+def dispatchmethod(
+    func: Callable[Concatenate[_S, _P], _R], /
+) -> "_Method[_S, _P, _R]": ...
 def dispatchmethod(*types: Any) -> Any:
     """Turn a method into a multimethod, as `dispatch` does a function.
 
@@ -609,7 +761,7 @@ def dispatchmethod(*types: Any) -> Any:
     """
     types, func = _parse_decorator_args("dispatchmethod()", types)
 
-    def decorator(func: Any) -> Multimethod:
+    def decorator(func: Any) -> Multimethod[..., Any]:
         if not _is_function(func):
             raise TypeError(f"dispatchmethod() expected a function, got {func!r}")
         if isinstance(func, staticmethod):
