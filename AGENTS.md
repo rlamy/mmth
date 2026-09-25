@@ -79,17 +79,17 @@ ruff format src/ tests/
 ### Type Checking
 
 ```bash
-# Run mypy (if installed)
 mypy src/
-
-# Run pyright (if installed)
 pyright src/
+mypy --strict tests/typing
+pyright -p tests/typing    # strict mode, via tests/typing/pyrightconfig.json
+uv run tox -e typing       # all of the above
 ```
 
 ### CI (GitHub Actions)
 
 CI (`.github/workflows/ci.yml`) runs tests on Python 3.11, 3.12, 3.13, 3.14,
-and PyPy 3.11, plus a separate `ruff check` lint job. Each job installs uv,
+and PyPy 3.11, plus separate `ruff check` lint and mypy/pyright typing jobs. Each job installs uv,
 has uv fetch the matrix interpreter (`uv python install ...`), and runs
 tests through `tox` (`tox.ini`, using the `tox-uv` plugin) so the same
 commands reproduce locally:
@@ -98,6 +98,7 @@ commands reproduce locally:
 uv run tox            # test envs for every interpreter tox/uv can find or fetch, + lint
 uv run tox -e py313    # test a single interpreter
 uv run tox -e lint     # lint only
+uv run tox -e typing   # mypy + pyright on src/ and tests/typing/ (see docs/development.md)
 uv run tox -e benchmark  # performance benchmarks (not part of the default envlist)
 ```
 
@@ -323,7 +324,8 @@ mmth/
 │   ├── strategies.py     # Hypothesis strategies shared by test modules
 │   ├── test_hypothesis.py # property-based specialization tests
 │   ├── test_functools_compat.py # single dispatch vs functools.singledispatch
-│   └── test_benchmarks.py # pytest-benchmark performance benchmarks (excluded by default)
+│   ├── test_benchmarks.py # pytest-benchmark performance benchmarks (excluded by default)
+│   └── typing/           # type-checked only (mypy, pyright): how user code is typed
 ├── pyproject.toml        # Project config
 ├── uv.lock               # Locked dependency versions (uv)
 ├── .python-version       # Default interpreter pin (uv)
@@ -380,6 +382,16 @@ explicit) signature. With one dispatched argument, behaviour matches
 docs/specification.md ("Differences from `functools.singledispatch`") says
 otherwise; `tests/test_functools_compat.py` checks this against functools
 itself, so keep it in sync with any new single-dispatch behaviour.
+
+### Static Typing
+
+`Multimethod[P, R]` is generic over the default implementation's signature,
+so calls are checked against it; implementations must return `R`.
+`dispatchmethod` is typed as `_Method` (type checkers only) to bind `self`.
+With explicit types, `register(T1, T2)` returns `_Register` (also type
+checkers only), which checks both that the implementation accepts those
+types and that the default does. `tests/typing/` covers this; keep it in
+sync with any change to the public signatures.
 
 ### Method Dispatch
 
