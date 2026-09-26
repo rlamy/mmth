@@ -216,7 +216,6 @@ class Multimethod:
             hasattr(t, "__abstractmethods__") for t in sig
         ):
             self._watch_abc_cache()
-        self._invalidate_cache()
 
     def _register(self, caller: str, types: tuple[Any, ...], func: Any) -> None:
         sigs = _expand(types or self._param_types(func, strict=True))
@@ -234,6 +233,7 @@ class Multimethod:
                 )
         for sig in sigs:
             self._store(sig, func)
+        self._invalidate_cache()
 
     # The types-first order matters: a type is itself callable, so
     # `register(int)` would otherwise match the bare-decorator overload.
@@ -257,8 +257,6 @@ class Multimethod:
         Also accepts a `classmethod` or `staticmethod`, for a method.
         """
         types, func = _parse_decorator_args("register()", types, func)
-        if func is not None:
-            return self.register(*types)(func)
 
         def decorator(func: Any) -> _Registered:
             if not _is_function(func):
@@ -266,24 +264,29 @@ class Multimethod:
             self._register("register()", types, func)
             return func
 
-        return decorator
+        return decorator(func) if func is not None else decorator
+
+    def _live_children(self) -> list["Multimethod"]:
+        """Return this multimethod's live children, pruning dead references."""
+        alive_refs = []
+        children = []
+        for ref in self._children:
+            child = ref()
+            if child is not None:
+                alive_refs.append(ref)
+                children.append(child)
+        self._children = alive_refs
+        return children
 
     def _watch_abc_cache(self) -> None:
         self._abc_token = get_cache_token()
-        for ref in self._children:
-            child = ref()
-            if child is not None:
-                child._watch_abc_cache()
+        for child in self._live_children():
+            child._watch_abc_cache()
 
     def _invalidate_cache(self) -> None:
         self._cache.clear()
-        alive = []
-        for ref in self._children:
-            child = ref()
-            if child is not None:
-                child._invalidate_cache()
-                alive.append(ref)
-        self._children = alive
+        for child in self._live_children():
+            child._invalidate_cache()
 
     def inherit(self) -> Self:
         """Return a multimethod for a subclass, inheriting this one's.
@@ -307,6 +310,15 @@ class Multimethod:
         self._children.append(weakref.ref(child))
         return child
 
+    def _as_types(
+        self, caller: str, types: _TypeSpec | tuple[_TypeSpec, ...]
+    ) -> tuple[Any, ...]:
+        """Normalize a `__getitem__`/`__setitem__` type-or-tuple argument."""
+        if not isinstance(types, tuple):
+            types = (types,)
+        types, _ = _parse_decorator_args(caller, types)
+        return types
+
     def __getitem__(
         self, types: _TypeSpec | tuple[_TypeSpec, ...]
     ) -> Callable[..., Any]:
@@ -316,9 +328,7 @@ class Multimethod:
         implementation must be registered for every member. Raise `KeyError`
         if there's no such implementation.
         """
-        if not isinstance(types, tuple):
-            types = (types,)
-        types, _ = _parse_decorator_args("__getitem__()", types)
+        types = self._as_types("__getitem__()", types)
         impls = [self._registry.get(sig) for sig in _expand(types)]
         if impls[0] is not None and all(impl is impls[0] for impl in impls):
             return impls[0]
@@ -328,9 +338,7 @@ class Multimethod:
         self, types: _TypeSpec | tuple[_TypeSpec, ...], func: Any
     ) -> None:
         """Register `func` for `types`, a single type or a tuple of them."""
-        if not isinstance(types, tuple):
-            types = (types,)
-        types, _ = _parse_decorator_args("__setitem__()", types)
+        types = self._as_types("__setitem__()", types)
         self._register("__setitem__()", types, func)
 
     @property
@@ -347,10 +355,12 @@ class Multimethod:
     def dispatch(self, *types: _TypeSpec) -> Any:
         """Return the implementation a call with arguments of `types` would run."""
         types, _ = _parse_decorator_args("dispatch()", types)
-        classes = [_classes(t) for t in types]
-        if any(c is None or len(c) != 1 for c in classes):
+        sigs = _expand(types)
+        if len(sigs) != 1:
             raise TypeError(f"dispatch() expected one class per argument, got {types}")
-        return self._lookup(tuple(c[0] for c in classes if c))
+        arg_types = sigs[0]
+        key: type | tuple[type, ...] = arg_types[0] if len(arg_types) == 1 else arg_types
+        return self._resolve(key)
 
     def _is_more_specialized(
         self, sig_a: tuple[type, ...], sig_b: tuple[type, ...]
@@ -435,8 +445,10 @@ class Multimethod:
 
     def _lookup(self, arg_types: tuple[type, ...]) -> Any:
         """Return the registered implementation for `arg_types`, uncached."""
-        if arg_types in self._registry:
+        try:
             return self._registry[arg_types]
+        except KeyError:
+            pass
 
         func = self._find_most_specialized(arg_types)
         if func is not None:
@@ -495,15 +507,12 @@ class _PendingInherit:
         # Same forms as `Multimethod.register`; annotations are only read
         # once `__set_name__` has the real multimethod (and its `_skip`).
         types, func = _parse_decorator_args("register()", types, func)
-        if func is not None:
-            self._registrations.append((types, func))
-            return func
 
         def decorator(func: Any) -> Any:
             self._registrations.append((types, func))
             return func
 
-        return decorator
+        return decorator(func) if func is not None else decorator
 
     def __set_name__(self, owner: type, name: str) -> None:
         parent = None
