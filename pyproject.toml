@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "Ronan", email = "ronan@example.com"}
+    {name = "Ronan Lamy", email = "ronan.lamy@gmail.com"}
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -19,8 +19,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/mmth"
-Repository = "https://github.com/yourusername/mmth"
+Homepage = "https://github.com/rlamy/mmth"
+Repository = "https://github.com/rlamy/mmth"
 Documentation = "https://mmth.readthedocs.io"
 
 [project.optional-dependencies]

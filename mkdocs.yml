@@ -1,6 +1,6 @@
 site_name: mmth
 site_description: A simple multiple-dispatch library for Python
-repo_url: https://github.com/yourusername/mmth
+repo_url: https://github.com/rlamy/mmth
 strict: true
 
 theme:
