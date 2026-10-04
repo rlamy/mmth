@@ -6,22 +6,16 @@
 
 ```python
 @dispatch
-def function_name(arg1: Type1, arg2: Type2, ...) -> ReturnType:
-    """Default implementation"""
-    ...
-
-# Or with explicit types, which take precedence over the annotations
-@dispatch(Type1, Type2, ...)
 def function_name(arg1, arg2, ...) -> ReturnType:
+    """Default implementation"""
     ...
 ```
 
 The decorated function is the **default implementation**, called whenever no
-registered signature matches. It is also registered under its signature: the
-explicit types if given, else its parameters' annotations, where a parameter
-without a type annotation counts as `object`. The multimethod takes on the
-default's `__name__`, `__doc__`, `__wrapped__`, etc., as with
-`functools.wraps`.
+registered signature matches. As with `functools.singledispatch`, its
+annotations are ignored: it is registered for `object` at every parameter.
+The multimethod takes on the default's `__name__`, `__doc__`, `__wrapped__`,
+etc., as with `functools.wraps`.
 
 ### 2. Register an Implementation (Main Syntax)
 
@@ -37,9 +31,8 @@ def function_name_impl(arg1: Type1, arg2: Type2, ...) -> ReturnType:
     ...
 ```
 
-As with `@dispatch`, explicit types take precedence over annotations. Unlike
-`@dispatch`, every parameter must then have a type annotation, since there is
-no sensible default: a missing one raises `TypeError`. String annotations
+Explicit types take precedence over annotations. Without them, every
+parameter must have a type annotation: a missing one raises `TypeError`. String annotations
 (e.g. under `from __future__ import annotations`) are evaluated, as
 `functools.singledispatch` does; one that can't be resolved yet (a forward
 reference) raises `TypeError` too - pass the types explicitly in that case.
@@ -51,12 +44,6 @@ Also as with `functools.singledispatch`:
   member.
 - `function_name.register(Type, impl)` or `.register(Type, func=impl)`
   registers `impl` directly, rather than returning a decorator.
-
-**Registered types must be subclasses of the default's**: a signature of the
-same length as the default's must be a subclass of it at every position (of
-at least one member, for a union), or `register()` raises `TypeError`. The
-default claims to handle its annotated types, so an implementation for
-anything broader or unrelated would contradict it.
 
 ### 3. Register an Implementation (Metaprogramming)
 
@@ -137,8 +124,7 @@ standard annotations stand for classes:
 
 Anything else, notably a parameterized generic like `list[int]` (dispatch
 can't check its parameters) or `Literal[...]`, raises `TypeError` as an
-explicit type or a registered implementation's annotation, and counts as
-`object` in the default's annotations. For `func[...]` with a union, the same
+explicit type or a registered implementation's annotation. For `func[...]` with a union, the same
 implementation must be registered for every member.
 
 ### Introspection
@@ -161,10 +147,6 @@ like `functools.singledispatch` and `functools.singledispatchmethod`, except:
   same applies to a real base class against an unrelated ABC that `C`
   implicitly satisfies. (Where functools does raise on ambiguity between
   ABCs, it raises `RuntimeError`; mmth raises `TypeError`.)
-- **The default's annotations count**: functools ignores them and registers
-  the default for `object`, so `@singledispatch def f(x: Dog)` followed by
-  `f.register(Animal)` or `f.register(object)` works there; mmth raises
-  `TypeError`, since only subclasses of `Dog` may be registered (see above).
 - **`Any` means `object`**: functools treats it as a class that nothing is
   an instance of, so an implementation registered for `Any` never runs.
 - **Looking a `dispatchmethod` up on the class**: `Class.method(obj, arg)`

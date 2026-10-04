@@ -176,7 +176,7 @@ def test_single_type_shorthand():
     def double_float(x: float) -> float:
         return x * 2.0
 
-    impl = double[int]
+    impl = double[object]
     assert impl(5) == 10
 
     impl_float = double[float]
@@ -231,7 +231,7 @@ def test_getitem_returns_default():
     def add(a: int, b: int) -> int:
         return a + b
 
-    impl = add[int, int]
+    impl = add[object, object]
     assert impl(1, 2) == 3
 
 
@@ -319,39 +319,25 @@ def test_repeated_calls_use_the_cache_consistently():
         assert speak(dog) == "Woof!"
 
 
-def test_dispatch_explicit_types_take_precedence_over_annotations():
-    @dispatch(int)
-    def f(a: str) -> str:
-        return "default"
-
-    assert f[int] is f._default
-    with pytest.raises(KeyError):
-        f[str]
-    assert f(1) == "default"
-    assert f(1.0) == "default"  # still the fallback when nothing matches
-
-
-def test_dispatch_unannotated_parameter_counts_as_object():
+def test_dispatch_default_matches_object_whatever_its_annotations():
     @dispatch
-    def f(a, b: int) -> str:
+    def f(a: str, b=None) -> str:
         return "default"
 
-    assert f[object, int] is f._default
+    assert f.registry == {(object, object): f._default}
+    with pytest.raises(KeyError):
+        f[str, object]
+    assert f(1, 2) == "default"
+    assert f(1) == "default"  # still the fallback for another arity
 
 
-def test_dispatch_with_empty_parentheses_uses_annotations():
-    @dispatch()
-    def f(a: int) -> str:
-        return "default"
-
-    assert f[int] is f._default
-
-
-def test_dispatch_rejects_non_types_and_non_functions():
-    with pytest.raises(TypeError, match=r"dispatch\(\) expected types, got 42"):
+def test_dispatch_takes_only_a_function():
+    with pytest.raises(TypeError, match=r"dispatch\(\) expected a function, got 42"):
         dispatch(42)
     with pytest.raises(TypeError, match=r"dispatch\(\) expected a function"):
-        dispatch(int)(str)
+        dispatch(int)
+    with pytest.raises(TypeError):
+        dispatch()  # type: ignore[call-arg]
 
 
 def test_register_bare_uses_annotations():
@@ -451,36 +437,21 @@ def test_register_rejects_non_types():
         f.register(42)
 
 
-def test_register_requires_subclasses_of_the_default_annotation():
+def test_register_accepts_types_outside_the_default_annotation():
     class Animal:
-        pass
-
-    class Dog(Animal):
         pass
 
     @dispatch
     def f(a: Animal, b: int) -> str:
         return "default"
 
-    f.register(Dog, int)(lambda a, b: "dog")
-    f.register(Animal, bool)(lambda a, b: "bool")  # bool subclasses int
-    with pytest.raises(TypeError, match="expected subclasses of the default"):
-        f.register(object, int)(lambda a, b: "object")
-    with pytest.raises(TypeError, match="expected subclasses of the default"):
-        f[Dog, str] = lambda a, b: "str"
-    # a different arity isn't compared against the default's
+    f.register(object, int)(lambda a, b: "object, int")
+    f[Animal, str] = lambda a, b: "animal, str"
     f.register(int)(lambda a: "one argument")
+    assert f(1, 2) == "object, int"
+    assert f(Animal(), "s") == "animal, str"
+    assert f(Animal(), 1.0) == "default"
     assert f(1) == "one argument"
-
-
-def test_register_checks_each_member_of_a_union_default():
-    @dispatch
-    def f(a: int | str) -> str:
-        return "default"
-
-    f.register(bool)(lambda a: "bool")
-    with pytest.raises(TypeError, match="expected subclasses of the default"):
-        f.register(float)(lambda a: "float")
 
 
 def test_setitem_accepts_any_object():

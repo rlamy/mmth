@@ -2,10 +2,8 @@
 
 `dispatchmethod` is `dispatch` for use on a method: `self` is bound
 automatically via the descriptor protocol and excluded from dispatch, so
-`.register(*types)` only needs the types of the remaining arguments. It
-takes the same forms as `dispatch` (`@dispatchmethod` or
-`@dispatchmethod(Type1, ...)`), and its `.register()` the same forms as a
-function's.
+`.register(*types)` only needs the types of the remaining arguments. Its
+`.register()` takes the same forms as a function's.
 
 ```python
 from mmth import dispatchmethod

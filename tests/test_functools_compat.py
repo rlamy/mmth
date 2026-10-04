@@ -311,9 +311,7 @@ def test_multiple_inheritance_differs_from_functools():
         f(C())
 
 
-def test_registering_outside_default_annotation_differs_from_functools():
-    # functools ignores the default's annotations; mmth registers the
-    # default under them, so only subclasses may be registered
+def test_default_annotations_are_ignored():
     def build(decorator):
         @decorator
         def f(x: Dog):
@@ -322,9 +320,10 @@ def test_registering_outside_default_annotation_differs_from_functools():
         f.register(Animal)(lambda x: "animal")
         return f
 
-    with pytest.raises(TypeError, match="expected subclasses of the default"):
-        _both(build)
-    assert build(functools.singledispatch)(Dog()) == "animal"
+    reference, f = _both(build)
+    assert f(Dog()) == reference(Dog()) == "animal"
+    assert f(1) == reference(1) == "default"
+    assert set(f.registry) == set(reference.registry) == {object, Animal}
 
 
 def test_dispatchmethod_class_access_differs_from_functools():

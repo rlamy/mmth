@@ -374,8 +374,8 @@ Each `Multimethod` memoizes a successful resolution by argument types,
 invalidated on `register()`/`__setitem__()` (cascading to `inherit()`
 descendants) - see docs/performance.md.
 
-Registered types must be subclasses of the default's (annotated or
-explicit) signature. With one dispatched argument, behaviour matches
+The default is registered for `object` at every parameter, ignoring its
+annotations, as in `functools.singledispatch`. With one dispatched argument, behaviour matches
 `functools.singledispatch`/`singledispatchmethod` except where
 docs/specification.md ("Differences from `functools.singledispatch`") says
 otherwise; `tests/test_functools_compat.py` checks this against functools

@@ -251,7 +251,7 @@ def test_dispatchmethod_register_bare_uses_annotations_past_self():
 
     assert Evaluator().visit(Num(3)) == 3
     assert Evaluator().visit(Add(Num(1), Num(2))) == "default"
-    assert list(Evaluator.visit._registry) == [(Node,), (Num,)]
+    assert list(Evaluator.visit._registry) == [(object,), (Num,)]
 
 
 def test_inherit_register_bare_uses_annotations():
@@ -279,43 +279,22 @@ def test_inherit_register_bare_uses_annotations():
     assert PickyHandler().visit(Node()) == "default"
 
 
-def test_dispatchmethod_with_explicit_types():
-    class Evaluator:
-        @dispatchmethod(Node)
-        def visit(self, node):
-            return "default"
-
-        @visit.register(Num)
-        def _(self, node):
-            return node.value
-
-    assert Evaluator.visit[Node] is Evaluator.visit.__wrapped__
-    assert Evaluator().visit(Num(3)) == 3
-    assert Evaluator().visit(Node()) == "default"
-
-
-def test_dispatchmethod_with_empty_parentheses_uses_annotations():
-    class Evaluator:
-        @dispatchmethod()
-        def visit(self, node: Node):
-            return "default"
-
-    assert Evaluator.visit[Node] is Evaluator.visit.__wrapped__
-
-
-def test_dispatchmethod_rejects_non_types():
-    with pytest.raises(TypeError, match=r"dispatchmethod\(\) expected types"):
+def test_dispatchmethod_takes_only_a_function():
+    with pytest.raises(TypeError, match=r"dispatchmethod\(\) expected a function"):
         dispatchmethod(42)
+    with pytest.raises(TypeError, match=r"dispatchmethod\(\) expected a function"):
+        dispatchmethod(Node)
 
 
-def test_inherit_register_requires_subclasses_of_the_base_default():
+def test_inherit_register_accepts_types_outside_the_base_default():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
             return "default"
 
-    class PickyHandler(Handler):
+    class LenientHandler(Handler):
         visit = Handler.visit.inherit()
 
-    with pytest.raises(TypeError, match="expected subclasses of the default"):
-        PickyHandler.visit.register(int)(lambda self, node: "int")
+    LenientHandler.visit.register(int)(lambda self, node: "int")
+    assert LenientHandler().visit(1) == "int"
+    assert Handler().visit(1) == "default"

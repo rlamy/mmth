@@ -102,7 +102,6 @@ class Multimethod:
     __slots__ = (
         "_registry",
         "_default",
-        "_default_signatures",
         "_skip",
         "_parent",
         "_binds_class",
@@ -116,21 +115,21 @@ class Multimethod:
     def __init__(
         self,
         func: Callable[..., Any] | None = None,
-        *types: _TypeSpec,
+        *,
         _skip: int = 0,
         _parent: Self | None = None,
         _binds_class: bool = False,
     ) -> None:
         """Create a multimethod with `func` as its default implementation.
 
-        `func` is also registered under `types`, or else its annotations.
-        Without `func`, a call matching no registration raises `TypeError`.
+        `func` is registered for `object` at every parameter, whatever its
+        annotations. Without `func`, a call matching no registration raises
+        `TypeError`.
         The underscored arguments are internal, set by `dispatchmethod` and
         `inherit()`.
         """
         self._registry: dict[tuple[type, ...], Any] = {}
         self._default: Any = None
-        self._default_signatures: list[tuple[type, ...]] = []
         self._skip = _skip
         self._parent = _parent
         self._binds_class = _binds_class
@@ -141,16 +140,12 @@ class Multimethod:
         self._children: list[weakref.ReferenceType[Multimethod]] = []
         if func is None:
             return
-        _parse_decorator_args("Multimethod()", types)
         functools.update_wrapper(self, func)
         self.__isabstractmethod__ = getattr(func, "__isabstractmethod__", False)
         self._default = func
-        self._default_signatures = _expand(
-            types or self._param_types(func, strict=False)
-        )
-        for sig in self._default_signatures:
-            if sig:
-                self._store(sig, func)
+        arity = len(self._params(func))
+        if arity:
+            self._store((object,) * arity, func)
 
     def _unwrap(self, func: Any) -> tuple[Callable[..., Any], int]:
         """Return `func`'s plain function, and how many leading params to skip."""
@@ -160,29 +155,32 @@ class Multimethod:
             return func.__func__, 1
         return func, self._skip
 
-    def _param_types(self, func: Any, *, strict: bool) -> tuple[Any, ...]:
-        """Infer a registry key from `func`'s annotations, past `self`/`cls`.
-
-        A missing annotation, or one that can't be dispatched on, counts as
-        `object`, or raises `TypeError` if `strict`.
-        """
+    def _params(self, func: Any) -> list[inspect.Parameter]:
+        """Return `func`'s parameters past `self`/`cls`, if it has a signature."""
         func, skip = self._unwrap(func)
         try:
-            params = list(inspect.signature(func).parameters.values())
+            return list(inspect.signature(func).parameters.values())[skip:]
         except (ValueError, TypeError):
-            params = []
+            return []
+
+    def _param_types(self, func: Any) -> tuple[Any, ...]:
+        """Infer a registry key from `func`'s annotations, past `self`/`cls`.
+
+        Raise `TypeError` for a missing annotation, or one that can't be
+        dispatched on.
+        """
+        params = self._params(func)
+        func, _ = self._unwrap(func)
         try:
             hints = get_type_hints(func)
         except NameError:  # a forward reference that doesn't resolve yet
             hints = {}
         types = []
-        for p in params[skip:]:
+        for p in params:
             annotation = hints.get(p.name, p.annotation)
             # `Parameter.empty` (no annotation) is itself a class
             if annotation is not p.empty and _classes(annotation) is not None:
                 types.append(annotation)
-            elif not strict:
-                types.append(object)
             elif annotation is p.empty:
                 raise TypeError(
                     f"register() found no type annotation on parameter "
@@ -195,20 +193,12 @@ class Multimethod:
                     f"{func.__qualname__}, annotated {annotation!r}; pass the "
                     f"types explicitly"
                 )
-        if strict and not types:
+        if not types:
             raise TypeError(
                 f"register() found no parameters to dispatch on in "
                 f"{func.__qualname__}; pass the types explicitly"
             )
         return tuple(types)
-
-    def _default_signatures_in_chain(self) -> list[tuple[type, ...]]:
-        mm: Multimethod | None = self
-        while mm is not None:
-            if mm._default is not None:
-                return mm._default_signatures
-            mm = mm._parent
-        return []
 
     def _store(self, sig: tuple[type, ...], func: Any) -> None:
         self._registry[sig] = func
@@ -217,21 +207,8 @@ class Multimethod:
         ):
             self._watch_abc_cache()
 
-    def _register(self, caller: str, types: tuple[Any, ...], func: Any) -> None:
-        sigs = _expand(types or self._param_types(func, strict=True))
-        defaults = [
-            d for d in self._default_signatures_in_chain() if len(d) == len(sigs[0])
-        ]
-        for sig in sigs:
-            if defaults and not any(
-                all(issubclass(t, dt) for t, dt in zip(sig, d)) for d in defaults
-            ):
-                expected = " or ".join(str(d) for d in defaults)
-                raise TypeError(
-                    f"{caller} expected subclasses of the default "
-                    f"implementation's types {expected}, got {sig}"
-                )
-        for sig in sigs:
+    def _register(self, types: tuple[Any, ...], func: Any) -> None:
+        for sig in _expand(types or self._param_types(func)):
             self._store(sig, func)
         self._invalidate_cache()
 
@@ -252,16 +229,14 @@ class Multimethod:
         either bare, `@f.register`, or with explicit types,
         `@f.register(T1, T2)`, which take precedence over annotations; or
         functools-style, `f.register(T, func)`. A union type (`int | str`)
-        registers the implementation for each member. With a default
-        implementation, the types must be subclasses of its annotations.
-        Also accepts a `classmethod` or `staticmethod`, for a method.
+        registers the implementation for each member. Also accepts a `classmethod` or `staticmethod`, for a method.
         """
         types, func = _parse_decorator_args("register()", types, func)
 
         def decorator(func: Any) -> _Registered:
             if not _is_function(func):
                 raise TypeError(f"register() expected a function, got {func!r}")
-            self._register("register()", types, func)
+            self._register(types, func)
             return func
 
         return decorator(func) if func is not None else decorator
@@ -339,7 +314,7 @@ class Multimethod:
     ) -> None:
         """Register `func` for `types`, a single type or a tuple of them."""
         types = self._as_types("__setitem__()", types)
-        self._register("__setitem__()", types, func)
+        self._register(types, func)
 
     @property
     def registry(self) -> Mapping[Any, Any]:
@@ -552,44 +527,20 @@ def inherit() -> Multimethod:
     return _PendingInherit()  # type: ignore[return-value]
 
 
-# Types first, as for `Multimethod.register`; mypy flags the overlap (a
-# type is callable) even though that order resolves it correctly.
-@overload
-def dispatch(  # type: ignore[overload-overlap]
-    *types: _TypeSpec,
-) -> Callable[[Callable[..., Any]], Multimethod]: ...
-@overload
-def dispatch(func: Callable[..., Any], /) -> Multimethod: ...
-def dispatch(*types: Any) -> Any:
+def dispatch(func: Callable[..., Any]) -> Multimethod:
     """Turn a function into a multimethod, with it as the default.
 
     The default implementation is called whenever no registered signature
-    matches. Use either bare, `@dispatch`, or with explicit types,
-    `@dispatch(T1, T2)`, which take precedence over annotations, same as
-    `.register()`. Unlike `.register()`, a parameter without a type
-    annotation, or with one that can't be dispatched on, counts as `object`.
+    matches, and is registered for `object` at every parameter: as with
+    `functools.singledispatch`, its annotations are ignored.
     """
-    types, func = _parse_decorator_args("dispatch()", types)
-
-    def decorator(func: Callable[..., Any]) -> Multimethod:
-        if not _is_function(func):
-            raise TypeError(f"dispatch() expected a function, got {func!r}")
-        return Multimethod(func, *types)
-
-    return decorator(func) if func is not None else decorator
+    if not _is_function(func):
+        raise TypeError(f"dispatch() expected a function, got {func!r}")
+    return Multimethod(func)
 
 
-@overload
-def dispatchmethod(  # type: ignore[overload-overlap]
-    *types: _TypeSpec,
-) -> Callable[[Any], Multimethod]: ...
-@overload
-def dispatchmethod(func: Any, /) -> Multimethod: ...
-def dispatchmethod(*types: Any) -> Any:
+def dispatchmethod(func: Any) -> Multimethod:
     """Turn a method into a multimethod, as `dispatch` does a function.
-
-    It takes the same two forms (`@dispatchmethod` or
-    `@dispatchmethod(T1, T2)`).
 
     `self` is bound automatically via the descriptor protocol and excluded
     from dispatch, so `.register(*types)` only lists the types of the
@@ -616,15 +567,8 @@ def dispatchmethod(*types: Any) -> Any:
             return self.visit(node.left) + self.visit(node.right)
     ```
     """
-    types, func = _parse_decorator_args("dispatchmethod()", types)
-
-    def decorator(func: Any) -> Multimethod:
-        if not _is_function(func):
-            raise TypeError(f"dispatchmethod() expected a function, got {func!r}")
-        if isinstance(func, staticmethod):
-            return Multimethod(func, *types)
-        return Multimethod(
-            func, *types, _skip=1, _binds_class=isinstance(func, classmethod)
-        )
-
-    return decorator(func) if func is not None else decorator
+    if not _is_function(func):
+        raise TypeError(f"dispatchmethod() expected a function, got {func!r}")
+    if isinstance(func, staticmethod):
+        return Multimethod(func)
+    return Multimethod(func, _skip=1, _binds_class=isinstance(func, classmethod))
