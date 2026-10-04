@@ -88,7 +88,7 @@ When `function_name(arg1, arg2, ...)` is called:
 5. **Fallback**:
    - If no registered signature matches → call the default implementation
      (the function decorated with `@dispatch`), whatever the argument types
-   - If there is no default (a bare `Multimethod()`) → raise `TypeError`
+   - If there is no default (a bare `Multimethod()`) → raise `NoMatchError`
 
 ### Registration Methods
 
@@ -136,6 +136,12 @@ As with `functools.singledispatch`:
 - `func.registry` is a read-only mapping of every registered signature to its
   implementation, keyed by a bare type for a single argument, else a tuple.
 
+Underneath, the implementations live in a `mmth.TypeMap`, a mutable mapping
+of exactly the signatures registered on it (so `del typemap[sig]`
+unregisters `sig`), whose `lookup(types)` returns, cached, what a call
+with arguments of `types` would run: exact match, else most specialized,
+else its `inherit()` parent's, else the default.
+
 ## Differences from `functools.singledispatch`
 
 With a single dispatched argument, `dispatch` and `dispatchmethod` behave
@@ -143,10 +149,10 @@ like `functools.singledispatch` and `functools.singledispatchmethod`, except:
 
 - **Ties raise instead of following the MRO**: given `class C(A, B)` with
   implementations for both `A` and `B`, functools picks `A` (first in
-  `C.__mro__`), while mmth raises `TypeError("Ambiguous dispatch ...")`. The
+  `C.__mro__`), while mmth raises `AmbiguousMatchError("Ambiguous lookup ...")`. The
   same applies to a real base class against an unrelated ABC that `C`
   implicitly satisfies. (Where functools does raise on ambiguity between
-  ABCs, it raises `RuntimeError`; mmth raises `TypeError`.)
+  ABCs, it raises `RuntimeError`; mmth raises `AmbiguousMatchError`.)
 - **`Any` means `object`**: functools treats it as a class that nothing is
   an instance of, so an implementation registered for `Any` never runs.
 - **Looking a `dispatchmethod` up on the class**: `Class.method(obj, arg)`
@@ -243,7 +249,7 @@ def _(a: Animal, d: Dog) -> str:
 
 # ERROR: Ambiguous - neither is more specialized than the other
 f(Dog(), Dog())
-# TypeError: Ambiguous dispatch for types (Dog, Dog): matches multiple signatures
+# AmbiguousMatchError: Ambiguous lookup for types (Dog, Dog): matches several keys
 ```
 
 ## Error Cases
@@ -256,14 +262,14 @@ def foo(a: int) -> int:
 # KeyError - no implementation registered for exactly these types
 foo[float]  # KeyError: "No implementation registered for (<class 'float'>,)"
 
-# TypeError - no matching implementation and no default to fall back to
+# NoMatchError - no matching implementation and no default to fall back to
 bar = Multimethod()
 
 @bar.register(int)
 def _(a: int) -> int:
     return a * 2
 
-bar("str")  # TypeError: "No matching implementation for types (<class 'str'>,)"
+bar("str")  # NoMatchError: No key matches types (<class 'str'>,)
 ```
 
 ## Design Decisions

@@ -11,7 +11,7 @@ from typing import (
 
 import pytest
 
-from mmth import dispatch
+from mmth import AmbiguousMatchError, NoMatchError, dispatch
 from mmth.multimethod import Multimethod
 
 
@@ -54,11 +54,11 @@ def test_inheritance_dispatch():
     assert make_sound(dog) == "Woof!"
 
 
-def test_no_match_raises_type_error():
+def test_no_match_raises_no_match_error():
     d = Multimethod()
     d.register(int)(lambda a: a * 2)
     assert d(5) == 10
-    with pytest.raises(TypeError):
+    with pytest.raises(NoMatchError, match="No key matches"):
         d("not an int")
 
 
@@ -131,9 +131,9 @@ def test_ambiguity_detection():
     def _(a: Animal, d: Dog) -> str:
         return "Animal, Dog"
 
-    with pytest.raises(TypeError) as exc_info:
+    with pytest.raises(AmbiguousMatchError) as exc_info:
         f(Dog(), Dog())
-    assert "Ambiguous dispatch" in str(exc_info.value)
+    assert "Ambiguous lookup" in str(exc_info.value)
 
 
 def test_default_fallback_no_registrations():
@@ -156,15 +156,6 @@ def test_default_fallback_with_registrations():
 
     assert add(1, 2) == 3
     assert add(1, 2.0) == 3.0
-
-
-def test_no_implementation_at_all():
-    d = Multimethod()
-    d.register(int)(lambda a: a * 2)
-
-    with pytest.raises(TypeError) as exc_info:
-        d("str")
-    assert "No matching implementation" in str(exc_info.value)
 
 
 def test_single_type_shorthand():
@@ -324,7 +315,7 @@ def test_dispatch_default_matches_object_whatever_its_annotations():
     def f(a: str, b=None) -> str:
         return "default"
 
-    assert f.registry == {(object, object): f._default}
+    assert f.registry == {(object, object): f.__wrapped__}
     with pytest.raises(KeyError):
         f[str, object]
     assert f(1, 2) == "default"
@@ -469,7 +460,7 @@ def test_any_means_object():
     def f(a: Any) -> str:
         return "default"
 
-    assert f[object] is f._default
+    assert f[object] is f.__wrapped__
     f.register(int)(lambda a: "int")  # a subclass of the default's Any
 
     @f.register
@@ -543,7 +534,7 @@ def test_typevar_means_its_bound_or_constraints():
     def g(a: Constrained) -> str:
         return "str or bytes"
 
-    assert f[object] is f._default
+    assert f[object] is f.__wrapped__
     assert f(True) == "int"
     assert f("s") == f(b"b") == "str or bytes"
 
@@ -568,7 +559,7 @@ def test_dispatch_default_ignores_parameterized_generics():
     def f(a: list[int]) -> str:
         return "default"
 
-    assert f[object] is f._default
+    assert f[object] is f.__wrapped__
 
 
 def test_dispatch_method_accepts_annotations():
@@ -577,7 +568,7 @@ def test_dispatch_method_accepts_annotations():
         return "default"
 
     f.register(int)(lambda a: "int")
-    assert f.dispatch(None) is f._default
+    assert f.dispatch(None) is f.__wrapped__
     assert f.dispatch(Annotated[bool, "m"])(True) == "int"
     with pytest.raises(TypeError, match="one class per argument"):
         f.dispatch(Optional[int])

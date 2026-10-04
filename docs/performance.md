@@ -2,9 +2,10 @@
 
 Resolving a call's implementation (matching runtime types against the
 registry, and - on a miss - falling through `inherit()`'s parent chain)
-only depends on the argument types, so each `Multimethod` memoizes a
-successful resolution by argument types; a `register()`/`__setitem__()`
-call clears the cache, cascading to every `inherit()`-chained descendant
+only depends on the argument types, so each `Multimethod`'s `TypeMap`
+memoizes a successful resolution by argument types; any change to the
+registry (`register()`, `__setitem__()`, deleting from the `TypeMap`)
+clears the cache, cascading to every `inherit()`-chained descendant
 (which can fall through to it). Failed resolutions (ambiguous / no match)
 aren't cached. This makes repeat calls with the same concrete types - the
 common case - essentially free after the first one, regardless of registry
@@ -27,7 +28,8 @@ PyPy): a cached one-argument call is then a little faster than
 `functools.singledispatch` on every supported CPython version, and several
 times faster on PyPy.
 
-`Multimethod` keeps every attribute a call touches in `__slots__`.
+`Multimethod` and `TypeMap` keep every attribute a call touches in
+`__slots__`.
 `functools.update_wrapper` accesses the instance's `__dict__` (to copy the
 default's own `__dict__`), and on CPython 3.11, 3.12 and 3.14 that moves an
 ordinary instance's attributes out of the fast inline layout that attribute

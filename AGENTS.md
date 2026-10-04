@@ -260,6 +260,8 @@ def __call__(self, *args, **kwargs):
 ## Testing Guidelines
 
 - All new functionality must have tests
+- Test behaviour, not declarations: don't write tests that just restate the
+  code (e.g. `issubclass(NoMatchError, TypeError)` for an exception class)
 - Tests should be in `tests/test_*.py`
 - **Do not use test classes** - use standalone functions
 - Never import from a test file (`test_*.py`); helpers or Hypothesis
@@ -283,10 +285,10 @@ def test_ambiguity_detection():
     def _(a: Animal, d: Dog) -> str:
         return "Animal, Dog"
     
-    with pytest.raises(TypeError) as exc_info:
+    with pytest.raises(AmbiguousMatchError) as exc_info:
         f(Dog(), Dog())
     
-    assert "Ambiguous dispatch" in str(exc_info.value)
+    assert "Ambiguous lookup" in str(exc_info.value)
 ```
 
 ---
@@ -315,10 +317,12 @@ mmth/
 │   └── ci.yml            # GitHub Actions CI
 ├── src/mmth/
 │   ├── __init__.py       # Public API exports
-│   └── multimethod.py    # Core implementation (dispatch, Multimethod, dispatchmethod)
+│   ├── multimethod.py    # Core implementation (dispatch, Multimethod, dispatchmethod)
+│   └── typemap.py        # TypeMap: signature table, lookup and resolution cache
 ├── tests/
 │   ├── test_mmth.py      # dispatch/Multimethod test suite
 │   ├── test_method.py    # dispatchmethod test suite
+│   ├── test_typemap.py   # TypeMap test suite
 │   ├── test_abc.py       # dispatch with real/virtual/structural ABC subclasses
 │   ├── strategies.py     # Hypothesis strategies shared by test modules
 │   ├── test_hypothesis.py # property-based specialization tests
@@ -370,9 +374,10 @@ add[str, str] = lambda a, b: f"{a}{b}"
 3. Default fallback
 4. Error if no match and no default (bare `Multimethod()`)
 
-Each `Multimethod` memoizes a successful resolution by argument types,
-invalidated on `register()`/`__setitem__()` (cascading to `inherit()`
-descendants) - see docs/performance.md.
+Each `Multimethod` keeps its implementations in a `TypeMap` (a mutable
+mapping by exact signature) whose `lookup()` does the lookup above and
+memoizes a successful resolution by argument types, invalidated on any
+change (cascading to `inherit()` descendants) - see docs/performance.md.
 
 The default is registered for `object` at every parameter, ignoring its
 annotations, as in `functools.singledispatch`. With one dispatched argument, behaviour matches

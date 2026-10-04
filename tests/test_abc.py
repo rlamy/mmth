@@ -3,7 +3,7 @@ from collections import abc as collections_abc
 
 import pytest
 
-from mmth import dispatch, dispatchmethod
+from mmth import AmbiguousMatchError, dispatch, dispatchmethod
 
 
 def test_dispatch_matches_a_real_abc_subclass():
@@ -141,7 +141,7 @@ def test_dispatch_raises_ambiguous_for_two_unrelated_virtual_bases():
     def _(obj) -> str:
         return "swims"
 
-    with pytest.raises(TypeError, match="Ambiguous dispatch"):
+    with pytest.raises(AmbiguousMatchError, match="Ambiguous lookup"):
         move(Duck())
 
 

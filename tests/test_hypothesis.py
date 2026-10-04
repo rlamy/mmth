@@ -4,7 +4,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from mmth import Multimethod
+from mmth import AmbiguousMatchError, Multimethod
 
 from strategies import multi_inheritance_dag, with_registered_subset
 
@@ -37,7 +37,7 @@ def test_dispatch_handles_multiple_inheritance(data, reverse_registration_order)
             assert mm(instance) == maximal[0]
         else:
             assert len(maximal) > 1
-            with pytest.raises(TypeError, match="Ambiguous dispatch"):
+            with pytest.raises(AmbiguousMatchError, match="Ambiguous lookup"):
                 mm(instance)
 
 
@@ -66,7 +66,7 @@ def _multi_arg_dags(draw, min_arity=2, max_arity=3, max_size=6, max_parents=3):
 
 
 def _dominates(sig_a, sig_b, ancestors_lists):
-    """`Multimethod._is_more_specialized`, from the ancestor sets."""
+    """`TypeMap._is_more_specialized`, from the ancestor sets."""
     more_specific = False
     for a, b, ancestors in zip(sig_a, sig_b, ancestors_lists):
         if b in ancestors[a]:
@@ -112,5 +112,5 @@ def test_multi_arg_dispatch_handles_ambiguity(data, reverse_registration_order):
             assert mm(*instances) == maximal[0]
         else:
             assert len(maximal) > 1
-            with pytest.raises(TypeError, match="Ambiguous dispatch"):
+            with pytest.raises(AmbiguousMatchError, match="Ambiguous lookup"):
                 mm(*instances)

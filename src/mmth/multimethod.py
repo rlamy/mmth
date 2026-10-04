@@ -3,8 +3,6 @@
 import functools
 import inspect
 import itertools
-import weakref
-from abc import get_cache_token
 from collections.abc import Mapping
 from types import MappingProxyType, MethodType, NoneType, UnionType
 from typing import (
@@ -20,6 +18,8 @@ from typing import (
     get_type_hints,
     overload,
 )
+
+from mmth.typemap import TypeMap
 
 # Not the implementation's own type: implementations are all named `_`, so
 # type checkers would treat a subclass's `_` as overriding its base's.
@@ -101,13 +101,8 @@ class Multimethod:
     # (see docs/performance.md).
     __slots__ = (
         "_registry",
-        "_default",
         "_skip",
-        "_parent",
         "_binds_class",
-        "_abc_token",
-        "_cache",
-        "_children",
         "__dict__",
         "__weakref__",
     )
@@ -124,28 +119,22 @@ class Multimethod:
 
         `func` is registered for `object` at every parameter, whatever its
         annotations. Without `func`, a call matching no registration raises
-        `TypeError`.
+        `NoMatchError`.
         The underscored arguments are internal, set by `dispatchmethod` and
         `inherit()`.
         """
-        self._registry: dict[tuple[type, ...], Any] = {}
-        self._default: Any = None
         self._skip = _skip
-        self._parent = _parent
         self._binds_class = _binds_class
-        # Set once an ABC is registered, since `SomeABC.register(cls)` can
-        # change `issubclass` results after they were cached.
-        self._abc_token: object | None = None
-        self._cache: dict[type | tuple[type, ...], Callable[..., Any]] = {}
-        self._children: list[weakref.ReferenceType[Multimethod]] = []
+        parent = _parent._registry if _parent is not None else None
         if func is None:
+            self._registry: TypeMap = TypeMap(parent, adapt=self._callable)
             return
         functools.update_wrapper(self, func)
         self.__isabstractmethod__ = getattr(func, "__isabstractmethod__", False)
-        self._default = func
+        self._registry = TypeMap(parent, default=func, adapt=self._callable)
         arity = len(self._params(func))
         if arity:
-            self._store((object,) * arity, func)
+            self._registry[(object,) * arity] = func
 
     def _unwrap(self, func: Any) -> tuple[Callable[..., Any], int]:
         """Return `func`'s plain function, and how many leading params to skip."""
@@ -200,17 +189,9 @@ class Multimethod:
             )
         return tuple(types)
 
-    def _store(self, sig: tuple[type, ...], func: Any) -> None:
-        self._registry[sig] = func
-        if self._abc_token is None and any(
-            hasattr(t, "__abstractmethods__") for t in sig
-        ):
-            self._watch_abc_cache()
-
     def _register(self, types: tuple[Any, ...], func: Any) -> None:
         for sig in _expand(types or self._param_types(func)):
-            self._store(sig, func)
-        self._invalidate_cache()
+            self._registry[sig] = func
 
     # The types-first order matters: a type is itself callable, so
     # `register(int)` would otherwise match the bare-decorator overload.
@@ -241,28 +222,6 @@ class Multimethod:
 
         return decorator(func) if func is not None else decorator
 
-    def _live_children(self) -> list["Multimethod"]:
-        """Return this multimethod's live children, pruning dead references."""
-        alive_refs = []
-        children = []
-        for ref in self._children:
-            child = ref()
-            if child is not None:
-                alive_refs.append(ref)
-                children.append(child)
-        self._children = alive_refs
-        return children
-
-    def _watch_abc_cache(self) -> None:
-        self._abc_token = get_cache_token()
-        for child in self._live_children():
-            child._watch_abc_cache()
-
-    def _invalidate_cache(self) -> None:
-        self._cache.clear()
-        for child in self._live_children():
-            child._invalidate_cache()
-
     def inherit(self) -> Self:
         """Return a multimethod for a subclass, inheriting this one's.
 
@@ -277,13 +236,9 @@ class Multimethod:
                     ...
                     return super().visit(x)
         """
-        child = type(self)(
+        return type(self)(
             _skip=self._skip, _parent=self, _binds_class=self._binds_class
         )
-        if self._abc_token is not None:
-            child._watch_abc_cache()
-        self._children.append(weakref.ref(child))
-        return child
 
     def _as_types(
         self, caller: str, types: _TypeSpec | tuple[_TypeSpec, ...]
@@ -335,69 +290,7 @@ class Multimethod:
             raise TypeError(f"dispatch() expected one class per argument, got {types}")
         arg_types = sigs[0]
         key: type | tuple[type, ...] = arg_types[0] if len(arg_types) == 1 else arg_types
-        return self._resolve(key)
-
-    def _is_more_specialized(
-        self, sig_a: tuple[type, ...], sig_b: tuple[type, ...]
-    ) -> bool:
-        """Return whether `sig_a` is strictly more specialized than `sig_b`."""
-        more_specific = False
-        for type_a, type_b in zip(sig_a, sig_b):
-            if issubclass(type_a, type_b):
-                if not issubclass(type_b, type_a):
-                    more_specific = True
-            else:
-                return False
-        return more_specific
-
-    def _find_most_specialized(
-        self, types: tuple[type, ...]
-    ) -> Callable[..., Any] | None:
-        """Find the most specialized matching signature, or raise on ambiguity."""
-        candidates = [
-            (sig, func) for sig, func in self._registry.items()
-            if self._match_signature(sig, types)
-        ]
-
-        if not candidates:
-            return None
-
-        # Not a running "best so far": a later candidate can dominate two
-        # earlier, mutually incomparable ones.
-        maximal = [
-            (sig, func)
-            for sig, func in candidates
-            if not any(
-                other_sig != sig and self._is_more_specialized(other_sig, sig)
-                for other_sig, _ in candidates
-            )
-        ]
-
-        if len(maximal) > 1:
-            raise TypeError(
-                f"Ambiguous dispatch for types {types}: "
-                f"matches multiple signatures"
-            )
-
-        return maximal[0][1]
-
-    def _resolve(self, key: type | tuple[type, ...]) -> Callable[..., Any]:
-        """Return the implementation to call for `key`, adapted and cached.
-
-        `key` is a bare type for one argument, else a tuple of types; see
-        `_callable` for the adaptation.
-        """
-        if self._abc_token is not None and self._abc_token != get_cache_token():
-            self._abc_token = get_cache_token()
-            self._cache.clear()
-        try:
-            return self._cache[key]
-        except KeyError:
-            pass
-        arg_types = key if isinstance(key, tuple) else (key,)
-        func = self._callable(self._lookup(arg_types))
-        self._cache[key] = func
-        return func
+        return self._registry.lookup(key)
 
     def _callable(self, func: Any) -> Any:
         """Adapt `func` to be called with this multimethod's own arguments.
@@ -418,25 +311,6 @@ class Multimethod:
             return lambda obj, *args, **kwargs: method(type(obj), *args, **kwargs)
         return func
 
-    def _lookup(self, arg_types: tuple[type, ...]) -> Any:
-        """Return the registered implementation for `arg_types`, uncached."""
-        try:
-            return self._registry[arg_types]
-        except KeyError:
-            pass
-
-        func = self._find_most_specialized(arg_types)
-        if func is not None:
-            return func
-
-        if self._parent is not None:
-            return self._parent._lookup(arg_types)
-
-        if self._default is not None:
-            return self._default
-
-        raise TypeError(f"No matching implementation for types {arg_types}")
-
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Call the implementation chosen by the arguments' types."""
         # Fast path for one dispatched argument (see docs/performance.md).
@@ -447,7 +321,7 @@ class Multimethod:
             key = args[self._skip].__class__
         else:
             key = tuple(arg.__class__ for arg in args[self._skip:])
-        return self._resolve(key)(*args, **kwargs)
+        return self._registry.lookup(key)(*args, **kwargs)
 
     def __get__(self, instance: object | None, owner: type | None = None) -> Any:
         """Bind to `instance` as a method, or to `owner` for a classmethod."""
@@ -457,15 +331,6 @@ class Multimethod:
             return self
         return MethodType(self, instance)
 
-    def _match_signature(self, sig: tuple[type, ...], types: tuple[type, ...]) -> bool:
-        if len(sig) != len(types):
-            return False
-        for sig_type, arg_type in zip(sig, types):
-            if not isinstance(sig_type, type):
-                return False
-            if not issubclass(arg_type, sig_type):
-                return False
-        return True
 
 
 class _PendingInherit:

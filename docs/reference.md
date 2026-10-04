@@ -7,3 +7,6 @@
         - Multimethod
         - dispatchmethod
         - inherit
+        - TypeMap
+        - NoMatchError
+        - AmbiguousMatchError

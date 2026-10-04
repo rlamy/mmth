@@ -14,7 +14,7 @@ from unittest import mock
 import pytest
 from hypothesis import given
 
-from mmth import dispatch, dispatchmethod, inherit
+from mmth import AmbiguousMatchError, dispatch, dispatchmethod, inherit
 
 from strategies import multi_inheritance_dag, with_registered_subset
 
@@ -307,7 +307,7 @@ def test_multiple_inheritance_differs_from_functools():
 
     reference, f = _both(build)
     assert reference(C()) == "A"
-    with pytest.raises(TypeError, match="Ambiguous dispatch"):
+    with pytest.raises(AmbiguousMatchError, match="Ambiguous lookup"):
         f(C())
 
 
