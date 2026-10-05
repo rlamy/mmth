@@ -235,7 +235,6 @@ if not types:
 - Private methods (starting with `_`) should be defined before public methods
 - Group related functionality together
 - Keep classes focused (single responsibility)
-- Maximum ~170 lines per file (current convention)
 
 ### Conditionals and Flow
 
