@@ -1,3 +1,4 @@
+import copy
 from abc import ABC
 
 import pytest
@@ -141,3 +142,37 @@ def test_abc_registration_invalidates_cache():
     assert parent.lookup(Dog) == child.lookup(Dog) == "object"
     Walker.register(Dog)
     assert parent.lookup(Dog) == child.lookup(Dog) == "walker"
+
+
+def test_copy_is_independent_but_keeps_parent_default_and_adapt():
+    parent = TypeMap()
+    parent[(object,)] = "object"
+    tm = TypeMap(parent, default="default", adapt=str.upper)
+    tm[(Animal,)] = "animal"
+    child = TypeMap(tm)
+    assert child.lookup(Dog) == "animal"
+
+    clone = copy.copy(tm)
+    clone[(Dog,)] = "dog"
+    del clone[(Animal,)]
+    assert dict(tm) == {(Animal,): "animal"}
+    assert dict(clone) == {(Dog,): "dog"}
+    assert tm.lookup(Dog) == "ANIMAL"
+    assert child.lookup(Dog) == "animal"
+    assert clone.lookup(PetDog) == "DOG"
+    assert clone.lookup(Animal) == "OBJECT"
+
+    parent[(Animal,)] = "parent animal"
+    assert clone.lookup(Animal) == "PARENT ANIMAL"
+
+
+def test_copy_keeps_watching_abcs():
+    class Walker(ABC):
+        pass
+
+    tm = TypeMap(default="default")
+    tm[(Walker,)] = "walker"
+    clone = copy.copy(tm)
+    assert clone.lookup(Dog) == "default"
+    Walker.register(Dog)
+    assert clone.lookup(Dog) == "walker"

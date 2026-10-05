@@ -3,7 +3,7 @@
 import weakref
 from abc import get_cache_token
 from collections.abc import Iterator, MutableMapping
-from typing import Any, Callable
+from typing import Any, Callable, Self
 
 _Signature = tuple[type, ...]
 _MISSING: Any = object()
@@ -187,6 +187,18 @@ class TypeMap(MutableMapping[_Signature, Any]):
     def __len__(self) -> int:
         """Return the number of keys stored here."""
         return len(self._table)
+
+    def __copy__(self) -> Self:
+        """Return a type map with the same keys, parent, default and adapt.
+
+        The copy is independent: changing either one leaves the other as is,
+        and it doesn't share this one's children.
+        """
+        new = type(self)(self._parent, default=self._default, adapt=self._adapt)
+        new._table = self._table.copy()
+        if self._abc_token is not None:
+            new._watch_abc_cache()
+        return new
 
     def lookup(self, key: type | _Signature) -> Any:
         """Return the value for the most specific key the types `key` match.
