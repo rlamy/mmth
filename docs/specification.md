@@ -140,7 +140,8 @@ Underneath, the implementations live in a `mmth.TypeMap`, a mutable mapping
 of exactly the signatures registered on it (so `del typemap[sig]`
 unregisters `sig`), whose `lookup(types)` returns, cached, what a call
 with arguments of `types` would run: exact match, else most specialized,
-else its `inherit()` parent's, else the default.
+else the default; with an `inherit()` parent, among the
+signatures `parent | child`.
 
 ## Differences from `functools.singledispatch`
 

@@ -70,6 +70,21 @@ def test_lookup_falls_back_on_parent_then_nearest_default():
     assert TypeMap(default=None).lookup(int) is None
 
 
+def test_lookup_merges_parent_keys_with_own():
+    parent = TypeMap()
+    parent[(Animal,)] = "parent animal"
+    parent[(Dog,)] = "parent dog"
+    child = TypeMap(parent)
+    child[(object,)] = "child object"
+    child[(Animal,)] = "child animal"
+    assert child.lookup(Animal) == "child animal"
+    assert child.lookup(PetDog) == "parent dog"
+    assert child.lookup(int) == "child object"
+    child[(Pet,)] = "child pet"
+    with pytest.raises(AmbiguousMatchError):
+        child.lookup(PetDog)
+
+
 def test_lookup_adapts_once_per_looked_up_types():
     made = []
     tm = TypeMap(adapt=lambda value: made.append(value) or [value])

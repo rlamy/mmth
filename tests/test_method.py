@@ -155,9 +155,7 @@ def test_dispatchmethod_inherit_can_replace_several_implementations():
     assert PickyHandler().visit(Node()) == "default"
 
 
-def test_dispatchmethod_inherit_wins_regardless_of_relative_specificity():
-    # PickyHandler registers a broader type (Node) than Handler (Num), and
-    # still wins for Num
+def test_dispatchmethod_inherit_dispatches_on_the_merged_registrations():
     class Handler:
         @dispatchmethod
         def visit(self, node: Node):
@@ -172,10 +170,11 @@ def test_dispatchmethod_inherit_wins_regardless_of_relative_specificity():
 
         @visit.register(Node)
         def _(self, node):
-            return "picky-any"
+            return "picky-node"
 
-    assert Handler().visit(Num(1)) == "handler-num"
-    assert PickyHandler().visit(Num(1)) == "picky-any"
+    assert PickyHandler().visit(Num(1)) == "handler-num"
+    assert PickyHandler().visit(Node()) == "picky-node"
+    assert Handler().visit(Node()) == "default"
 
 
 def test_inherit_function_finds_base_multimethod_automatically():

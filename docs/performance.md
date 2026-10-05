@@ -1,12 +1,12 @@
 # Performance: Resolution Caching
 
 Resolving a call's implementation (matching runtime types against the
-registry, and - on a miss - falling through `inherit()`'s parent chain)
+registry, merged with those along `inherit()`'s parent chain)
 only depends on the argument types, so each `Multimethod`'s `TypeMap`
 memoizes a successful resolution by argument types; any change to the
 registry (`register()`, `__setitem__()`, deleting from the `TypeMap`)
 clears the cache, cascading to every `inherit()`-chained descendant
-(which can fall through to it). Failed resolutions (ambiguous / no match)
+(whose lookups include its keys). Failed resolutions (ambiguous / no match)
 aren't cached. This makes repeat calls with the same concrete types - the
 common case - essentially free after the first one, regardless of registry
 size or `inherit()` chain depth; see `tests/test_benchmarks.py`.

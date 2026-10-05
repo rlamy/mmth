@@ -102,20 +102,16 @@ it as `functools.singledispatchmethod` would.
 
 ## Overriding One Implementation in a Subclass
 
-Subclassing a `dispatchmethod` isn't standard multiple dispatch: a subclass
-overriding one implementation should win *regardless* of how its registered
-type compares in specificity to what the base class registered - exactly
-like a plain method override, which doesn't care what a sibling method
-does.
-Comparing `self`'s type against the other arguments as peers (as `dispatch`
-does for genuine multi-argument dispatch) gets this wrong: if a subclass
-registers a *broader* type than the base class did, "most specific match
-wins" has no clear answer and either picks the wrong one or raises
-"ambiguous dispatch". `inherit()` avoids this entirely, by not comparing
-the two at all: assign it as the subclass's own attribute (under the same
-name the base class uses), then build it up with `.register(*types)`
-exactly like `dispatchmethod` itself. The subclass's own multimethod is
-always tried first, in full, before ever falling through to the base one:
+A subclass can override some implementations of a base class's
+`dispatchmethod` without touching the base class itself, with `inherit()`:
+assign it as the subclass's own attribute (under the same name the base
+class uses), then build it up with `.register(*types)` exactly like
+`dispatchmethod` itself. The subclass's multimethod dispatches on the
+registrations `base | subclass`: a registration for the same types
+replaces the base's, and otherwise the most specific one wins, whichever
+class registered it. So registering a broader
+type than the base class did doesn't override the base's more specific
+registration (and can make a call ambiguous, as in `dispatch`):
 
 ```python
 from mmth import inherit

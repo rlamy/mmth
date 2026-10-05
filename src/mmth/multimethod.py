@@ -225,8 +225,9 @@ class Multimethod:
     def inherit(self) -> Self:
         """Return a multimethod for a subclass, inheriting this one's.
 
-        Its own registrations are always tried first, whatever their types,
-        like a method override (see docs/methods.md):
+        It dispatches on `base | sub` registrations: its own replace those
+        for the same types, and the most specific of all the others wins
+        (see docs/methods.md):
 
             class Sub(Base):
                 visit = Base.visit.inherit()

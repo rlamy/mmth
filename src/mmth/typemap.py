@@ -21,10 +21,10 @@ class TypeMap(MutableMapping[_Signature, Any]):
     """A mapping keyed by tuples of types, with lookups that match subclasses.
 
     As a mapping, it only holds its own keys, matched exactly. `lookup()`
-    looks up the value of the most specific stored key that a tuple of types
+    looks up the value of the most specific key that a tuple of types
     matches position by position, each a subclass of the key's type, else
-    the parent type map's, else the default; an exact key is always the most
-    specific. It caches its results.
+    the default; an exact key is always the most specific. With a parent
+    type map, it looks among the keys `parent | self`. It caches its results.
     """
 
     # Slots, since `lookup()` is performance-critical (see
@@ -51,10 +51,10 @@ class TypeMap(MutableMapping[_Signature, Any]):
         default: Any = _MISSING,
         adapt: Callable[[Any], Any] | None = None,
     ) -> None:
-        """Create an empty type map, falling back on `parent`'s in `lookup()`.
+        """Create an empty type map, inheriting `parent`'s keys in `lookup()`.
 
-        `lookup()` returns `default` when no key matches, here or in the
-        parent type maps (or the nearest ancestor's default, if not given),
+        `lookup()` looks among the keys `parent | self`, and returns `default`
+        when no key matches (or the nearest ancestor's default, if not given),
         and passes whatever it finds through `adapt`, if given. Since
         `lookup()` caches by the types looked up, not by the key they matched,
         `adapt` runs once per distinct looked-up types: `list` and `tuple`
@@ -67,6 +67,8 @@ class TypeMap(MutableMapping[_Signature, Any]):
         self._abc_token: object | None = None
         self._parent = parent
         self._children: list[weakref.ReferenceType[TypeMap]] = []
+        if default is _MISSING and parent is not None:
+            default = parent._default
         self._default = default
         self._adapt = adapt
         if parent is not None:
@@ -99,31 +101,28 @@ class TypeMap(MutableMapping[_Signature, Any]):
     @staticmethod
     def _is_more_specialized(sig_a: _Signature, sig_b: _Signature) -> bool:
         """Return whether `sig_a` is strictly more specialized than `sig_b`."""
-        more_specific = False
-        for type_a, type_b in zip(sig_a, sig_b):
-            if issubclass(type_a, type_b):
-                if not issubclass(type_b, type_a):
-                    more_specific = True
-            else:
-                return False
-        return more_specific
+        return sig_a != sig_b and all(map(issubclass, sig_a, sig_b))
 
     @staticmethod
     def _match_signature(sig: _Signature, types: _Signature) -> bool:
-        if len(sig) != len(types):
-            return False
-        for sig_type, arg_type in zip(sig, types):
-            if not isinstance(sig_type, type):
-                return False
-            if not issubclass(arg_type, sig_type):
-                return False
-        return True
+        return len(sig) == len(types) and all(
+            isinstance(sig_type, type) and issubclass(arg_type, sig_type)
+            for sig_type, arg_type in zip(sig, types)
+        )
 
-    def _find_most_specialized(self, types: _Signature) -> Any:
+    def _merged_table(self) -> dict[_Signature, Any]:
+        """Return `parent | self`, recursively, as a dict."""
+        if self._parent is None:
+            return self._table
+        return self._parent._merged_table() | self._table
+
+    def _find_most_specialized(
+        self, table: dict[_Signature, Any], types: _Signature
+    ) -> Any:
         """Return the most specific matching key's value, or raise on ambiguity."""
         candidates = [
             (sig, value)
-            for sig, value in self._table.items()
+            for sig, value in table.items()
             if self._match_signature(sig, types)
         ]
         if not candidates:
@@ -135,29 +134,21 @@ class TypeMap(MutableMapping[_Signature, Any]):
             (sig, value)
             for sig, value in candidates
             if not any(
-                other_sig != sig and self._is_more_specialized(other_sig, sig)
-                for other_sig, _ in candidates
+                self._is_more_specialized(other_sig, sig) for other_sig, _ in candidates
             )
         ]
         if len(maximal) > 1:
             raise AmbiguousMatchError(self._ambiguous_message.format(types=types))
         return maximal[0][1]
 
-    def _find(self, types: _Signature) -> Any:
-        """Return the value matching `types` here or in a parent, or `_MISSING`."""
-        value = self._table.get(types, _MISSING)
-        if value is _MISSING:
-            value = self._find_most_specialized(types)
-        if value is _MISSING and self._parent is not None:
-            value = self._parent._find(types)
-        return value
-
     def _miss(self, types: _Signature) -> Any:
-        value = self._find(types)
-        tm: TypeMap | None = self
-        while value is _MISSING and tm is not None:
-            value = tm._default
-            tm = tm._parent
+        table = self._merged_table()
+        try:
+            value = table[types]
+        except KeyError:
+            value = self._find_most_specialized(table, types)
+        if value is _MISSING:
+            value = self._default
         if value is _MISSING:
             raise NoMatchError(self._no_match_message.format(types=types))
         return value if self._adapt is None else self._adapt(value)

@@ -391,10 +391,10 @@ itself, so keep it in sync with any new single-dispatch behaviour.
 `dispatchmethod` is `dispatch` for use on a method: `self` is bound
 automatically via the descriptor protocol and excluded from dispatch, so
 `.register(*types)` only needs the types of the remaining arguments. A
-subclass replaces one implementation for itself via `inherit()` (chains
-to a separate multimethod, tried first, so the subclass always wins
-regardless of relative type specificity - unlike standard multiple
-dispatch) rather than `.register()` on the shared table; `inherit()`
+subclass replaces one implementation for itself via `inherit()` (a
+separate multimethod dispatching on `base | subclass` registrations,
+so the most specific signature still wins across both) rather than
+`.register()` on the shared table; `inherit()`
 finds the base multimethod itself via `__set_name__` (same lookup
 `super()` would do), or use `Base.visit.inherit()` directly when that
 auto-lookup isn't what you want. See docs/methods.md ("Method Dispatch"
