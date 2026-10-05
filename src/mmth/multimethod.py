@@ -19,7 +19,7 @@ from typing import (
     overload,
 )
 
-from mmth.typemap import TypeMap
+from mmth.typemap import ChainTypeMap, TypeMap
 
 # Not the implementation's own type: implementations are all named `_`, so
 # type checkers would treat a subclass's `_` as overriding its base's.
@@ -112,7 +112,6 @@ class Multimethod:
         func: Callable[..., Any] | None = None,
         *,
         _skip: int = 0,
-        _parent: Self | None = None,
         _binds_class: bool = False,
     ) -> None:
         """Create a multimethod with `func` as its default implementation.
@@ -125,13 +124,12 @@ class Multimethod:
         """
         self._skip = _skip
         self._binds_class = _binds_class
-        parent = _parent._registry if _parent is not None else None
         if func is None:
-            self._registry: TypeMap = TypeMap(parent, adapt=self._callable)
+            self._registry: TypeMap = TypeMap(adapt=self._callable)
             return
         functools.update_wrapper(self, func)
         self.__isabstractmethod__ = getattr(func, "__isabstractmethod__", False)
-        self._registry = TypeMap(parent, default=func, adapt=self._callable)
+        self._registry = TypeMap(default=func, adapt=self._callable)
         arity = len(self._params(func))
         if arity:
             self._registry[(object,) * arity] = func
@@ -237,9 +235,9 @@ class Multimethod:
                     ...
                     return super().visit(x)
         """
-        return type(self)(
-            _skip=self._skip, _parent=self, _binds_class=self._binds_class
-        )
+        child = type(self)(_skip=self._skip, _binds_class=self._binds_class)
+        child._registry = ChainTypeMap(self._registry, adapt=child._callable)
+        return child
 
     def _as_types(
         self, caller: str, types: _TypeSpec | tuple[_TypeSpec, ...]

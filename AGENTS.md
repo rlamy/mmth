@@ -318,7 +318,7 @@ mmth/
 ├── src/mmth/
 │   ├── __init__.py       # Public API exports
 │   ├── multimethod.py    # Core implementation (dispatch, Multimethod, dispatchmethod)
-│   └── typemap.py        # TypeMap: signature table, lookup and resolution cache
+│   └── typemap.py        # TypeMap/ChainTypeMap: signature table, lookup, cache
 ├── tests/
 │   ├── test_mmth.py      # dispatch/Multimethod test suite
 │   ├── test_method.py    # dispatchmethod test suite
@@ -377,7 +377,8 @@ add[str, str] = lambda a, b: f"{a}{b}"
 Each `Multimethod` keeps its implementations in a `TypeMap` (a mutable
 mapping by exact signature) whose `lookup()` does the lookup above and
 memoizes a successful resolution by argument types, invalidated on any
-change (cascading to `inherit()` descendants) - see docs/performance.md.
+change (cascading to `inherit()` descendants, whose `ChainTypeMap`
+looks among `parent | child`) - see docs/performance.md.
 
 The default is registered for `object` at every parameter, ignoring its
 annotations, as in `functools.singledispatch`. With one dispatched argument, behaviour matches

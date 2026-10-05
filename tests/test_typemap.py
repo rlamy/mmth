@@ -3,7 +3,7 @@ from abc import ABC
 
 import pytest
 
-from mmth import AmbiguousMatchError, NoMatchError, TypeMap
+from mmth import AmbiguousMatchError, ChainTypeMap, NoMatchError, TypeMap
 
 
 class Animal:
@@ -25,7 +25,7 @@ class PetDog(Dog, Pet):
 def test_mapping_is_exact_and_own_keys_only():
     parent = TypeMap()
     parent[(object,)] = "object"
-    tm = TypeMap(parent)
+    tm = ChainTypeMap(parent)
     tm[(Animal,)] = "animal"
     assert tm[(Animal,)] == "animal"
     with pytest.raises(KeyError):
@@ -62,8 +62,8 @@ def test_lookup_raises_on_ambiguity():
 def test_lookup_falls_back_on_parent_then_nearest_default():
     root = TypeMap(default="root default")
     root[(Animal,)] = "animal"
-    child = TypeMap(root)
-    grandchild = TypeMap(child, default="grandchild default")
+    child = ChainTypeMap(root)
+    grandchild = ChainTypeMap(child, default="grandchild default")
     assert child.lookup(Dog) == grandchild.lookup(Dog) == "animal"
     assert child.lookup(int) == "root default"
     assert grandchild.lookup(int) == "grandchild default"
@@ -74,7 +74,7 @@ def test_lookup_merges_parent_keys_with_own():
     parent = TypeMap()
     parent[(Animal,)] = "parent animal"
     parent[(Dog,)] = "parent dog"
-    child = TypeMap(parent)
+    child = ChainTypeMap(parent)
     child[(object,)] = "child object"
     child[(Animal,)] = "child animal"
     assert child.lookup(Animal) == "child animal"
@@ -122,7 +122,7 @@ def test_lookup_caches_until_the_type_map_changes():
 def test_delitem_removes_only_exact_own_keys():
     parent = TypeMap()
     parent[(Animal,)] = "animal"
-    tm = TypeMap(parent)
+    tm = ChainTypeMap(parent)
     tm[(Dog,)] = "dog"
     with pytest.raises(KeyError):
         del tm[(PetDog,)]
@@ -137,8 +137,8 @@ def test_delitem_removes_only_exact_own_keys():
 def test_parent_changes_invalidate_children():
     parent = TypeMap()
     parent[(object,)] = "object"
-    child = TypeMap(parent)
-    grandchild = TypeMap(child)
+    child = ChainTypeMap(parent)
+    grandchild = ChainTypeMap(child)
     assert grandchild.lookup(Dog) == "object"
     parent[(Animal,)] = "animal"
     assert grandchild.lookup(Dog) == "animal"
@@ -153,18 +153,32 @@ def test_abc_registration_invalidates_cache():
     parent = TypeMap()
     parent[(object,)] = "object"
     parent[(Walker,)] = "walker"
-    child = TypeMap(parent)
+    child = ChainTypeMap(parent)
     assert parent.lookup(Dog) == child.lookup(Dog) == "object"
     Walker.register(Dog)
     assert parent.lookup(Dog) == child.lookup(Dog) == "walker"
 
 
+def test_children_watch_abcs_once_their_parent_does():
+    class Walker(ABC):
+        pass
+
+    parent = TypeMap()
+    parent[(object,)] = "object"
+    grandchild = ChainTypeMap(ChainTypeMap(parent))
+    assert grandchild.lookup(Dog) == "object"
+    parent[(Walker,)] = "walker"
+    assert grandchild.lookup(Dog) == "object"
+    Walker.register(Dog)
+    assert grandchild.lookup(Dog) == "walker"
+
+
 def test_copy_is_independent_but_keeps_parent_default_and_adapt():
     parent = TypeMap()
     parent[(object,)] = "object"
-    tm = TypeMap(parent, default="default", adapt=str.upper)
+    tm = ChainTypeMap(parent, default="default", adapt=str.upper)
     tm[(Animal,)] = "animal"
-    child = TypeMap(tm)
+    child = ChainTypeMap(tm)
     assert child.lookup(Dog) == "animal"
 
     clone = copy.copy(tm)

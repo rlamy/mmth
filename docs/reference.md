@@ -8,5 +8,6 @@
         - dispatchmethod
         - inherit
         - TypeMap
+        - ChainTypeMap
         - NoMatchError
         - AmbiguousMatchError
