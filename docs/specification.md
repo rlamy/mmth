@@ -11,9 +11,11 @@ def function_name(arg1, arg2, ...) -> ReturnType:
     ...
 ```
 
-The decorated function is the **default implementation**, called whenever no
-registered signature matches. As with `functools.singledispatch`, its
-annotations are ignored: it is registered for `object` at every parameter.
+The decorated function is the **default implementation**, registered for
+`object` at every parameter, so it's called whenever no more specific
+signature matches. As with `functools.singledispatch`, its annotations are
+ignored. Like any registration, it only matches calls with as many
+positional arguments as it has parameters.
 The multimethod takes on the default's `__name__`, `__doc__`, `__wrapped__`,
 etc., as with `functools.wraps`.
 
@@ -85,10 +87,8 @@ When `function_name(arg1, arg2, ...)` is called:
    - If A beats B but not vice versa → A wins
    - Exact match beats inheritance match
 
-5. **Fallback**:
-   - If no registered signature matches → call the default implementation
-     (the function decorated with `@dispatch`), whatever the argument types
-   - If there is no default (a bare `Multimethod()`) → raise `NoMatchError`
+5. **No match**: if no registered signature matches, including the
+   default's `(object, ...)` → raise `NoMatchError`
 
 ### Registration Methods
 
@@ -139,8 +139,8 @@ As with `functools.singledispatch`:
 Underneath, the implementations live in a `mmth.TypeMap`, a mutable mapping
 of exactly the signatures registered on it (so `del typemap[sig]`
 unregisters `sig`), whose `lookup(types)` returns, cached, what a call
-with arguments of `types` would run: exact match, else most specialized,
-else the default. An `inherit()` multimethod keeps them in a
+with arguments of `types` would run: exact match, else most specialized.
+An `inherit()` multimethod keeps them in a
 `mmth.ChainTypeMap`, whose `lookup()` looks among the signatures
 `parent | child`.
 
@@ -264,7 +264,7 @@ def foo(a: int) -> int:
 # KeyError - no implementation registered for exactly these types
 foo[float]  # KeyError: "No implementation registered for (<class 'float'>,)"
 
-# NoMatchError - no matching implementation and no default to fall back to
+# NoMatchError - no matching implementation
 bar = Multimethod()
 
 @bar.register(int)

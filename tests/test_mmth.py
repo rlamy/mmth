@@ -319,7 +319,6 @@ def test_dispatch_default_matches_object_whatever_its_annotations():
     with pytest.raises(KeyError):
         f[str, object]
     assert f(1, 2) == "default"
-    assert f(1) == "default"  # still the fallback for another arity
 
 
 def test_dispatch_takes_only_a_function():

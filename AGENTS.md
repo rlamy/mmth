@@ -370,8 +370,7 @@ add[str, str] = lambda a, b: f"{a}{b}"
 
 1. Exact match in registry
 2. Inheritance-based match (most specific wins)
-3. Default fallback
-4. Error if no match and no default (bare `Multimethod()`)
+3. Error if no match
 
 Each `Multimethod` keeps its implementations in a `TypeMap` (a mutable
 mapping by exact signature) whose `lookup()` does the lookup above and
@@ -380,7 +379,8 @@ change (cascading to `inherit()` descendants, whose `ChainTypeMap`
 looks among `parent | child`) - see docs/performance.md.
 
 The default is registered for `object` at every parameter, ignoring its
-annotations, as in `functools.singledispatch`. With one dispatched argument, behaviour matches
+annotations, as in `functools.singledispatch`; it's an ordinary table
+entry, with no catch-all for other arities. With one dispatched argument, behaviour matches
 `functools.singledispatch`/`singledispatchmethod` except where
 docs/specification.md ("Differences from `functools.singledispatch`") says
 otherwise; `tests/test_functools_compat.py` checks this against functools

@@ -59,15 +59,18 @@ def test_lookup_raises_on_ambiguity():
         tm.lookup(PetDog)
 
 
-def test_lookup_falls_back_on_parent_then_nearest_default():
-    root = TypeMap(default="root default")
+def test_lookup_falls_back_on_ancestors():
+    root = TypeMap()
+    root[(object,)] = "root object"
     root[(Animal,)] = "animal"
     child = ChainTypeMap(root)
-    grandchild = ChainTypeMap(child, default="grandchild default")
+    grandchild = ChainTypeMap(child)
+    grandchild[(object,)] = "grandchild object"
     assert child.lookup(Dog) == grandchild.lookup(Dog) == "animal"
-    assert child.lookup(int) == "root default"
-    assert grandchild.lookup(int) == "grandchild default"
-    assert TypeMap(default=None).lookup(int) is None
+    assert child.lookup(int) == "root object"
+    assert grandchild.lookup(int) == "grandchild object"
+    with pytest.raises(NoMatchError):
+        grandchild.lookup((int, int))
 
 
 def test_lookup_merges_parent_keys_with_own():
@@ -95,11 +98,10 @@ def test_lookup_adapts_once_per_looked_up_types():
     assert made == ["animal", "animal"]
 
 
-def test_lookup_adapts_values_including_the_default():
-    tm = TypeMap(default="default", adapt=str.upper)
+def test_lookup_adapts_values_but_mapping_does_not():
+    tm = TypeMap(adapt=str.upper)
     tm[(Animal,)] = "animal"
     assert tm.lookup(Dog) == "ANIMAL"
-    assert tm.lookup(int) == "DEFAULT"
     assert tm[(Animal,)] == "animal"
 
 
@@ -173,10 +175,10 @@ def test_children_watch_abcs_once_their_parent_does():
     assert grandchild.lookup(Dog) == "walker"
 
 
-def test_copy_is_independent_but_keeps_parent_default_and_adapt():
+def test_copy_is_independent_but_keeps_parent_and_adapt():
     parent = TypeMap()
     parent[(object,)] = "object"
-    tm = ChainTypeMap(parent, default="default", adapt=str.upper)
+    tm = ChainTypeMap(parent, adapt=str.upper)
     tm[(Animal,)] = "animal"
     child = ChainTypeMap(tm)
     assert child.lookup(Dog) == "animal"
@@ -199,9 +201,10 @@ def test_copy_keeps_watching_abcs():
     class Walker(ABC):
         pass
 
-    tm = TypeMap(default="default")
+    tm = TypeMap()
+    tm[(object,)] = "object"
     tm[(Walker,)] = "walker"
     clone = copy.copy(tm)
-    assert clone.lookup(Dog) == "default"
+    assert clone.lookup(Dog) == "object"
     Walker.register(Dog)
     assert clone.lookup(Dog) == "walker"

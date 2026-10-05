@@ -117,8 +117,7 @@ class Multimethod:
         """Create a multimethod with `func` as its default implementation.
 
         `func` is registered for `object` at every parameter, whatever its
-        annotations. Without `func`, a call matching no registration raises
-        `NoMatchError`.
+        annotations. A call matching no registration raises `NoMatchError`.
         The underscored arguments are internal, set by `dispatchmethod` and
         `inherit()`.
         """
@@ -129,7 +128,7 @@ class Multimethod:
             return
         functools.update_wrapper(self, func)
         self.__isabstractmethod__ = getattr(func, "__isabstractmethod__", False)
-        self._registry = TypeMap(default=func, adapt=self._callable)
+        self._registry = TypeMap(adapt=self._callable)
         arity = len(self._params(func))
         if arity:
             self._registry[(object,) * arity] = func
@@ -394,9 +393,9 @@ def inherit() -> Multimethod:
 def dispatch(func: Callable[..., Any]) -> Multimethod:
     """Turn a function into a multimethod, with it as the default.
 
-    The default implementation is called whenever no registered signature
-    matches, and is registered for `object` at every parameter: as with
-    `functools.singledispatch`, its annotations are ignored.
+    The default implementation is registered for `object` at every
+    parameter, so it's called whenever no more specific signature matches:
+    as with `functools.singledispatch`, its annotations are ignored.
     """
     if not _is_function(func):
         raise TypeError(f"dispatch() expected a function, got {func!r}")
