@@ -321,6 +321,15 @@ def test_dispatch_default_matches_object_whatever_its_annotations():
     assert f(1, 2) == "default"
 
 
+def test_dispatch_default_arity_ignores_keyword_only_params():
+    @dispatch
+    def f(a, *, key=None, **kwargs) -> str:
+        return f"default {key}"
+
+    assert f.registry == {object: f.__wrapped__}
+    assert f(1, key="k", extra=0) == "default k"
+
+
 def test_dispatch_takes_only_a_function():
     with pytest.raises(TypeError, match=r"dispatch\(\) expected a function, got 42"):
         dispatch(42)
@@ -380,6 +389,19 @@ def test_register_requires_annotation_on_every_parameter():
 
     with pytest.raises(TypeError, match="no type annotation on parameter 'b'"):
         f.register(g)
+
+
+def test_register_ignores_keyword_only_annotations():
+    @dispatch
+    def f(a: object, *, key: object = None) -> str:
+        return "default"
+
+    @f.register
+    def f_int(a: int, *, key: str = "", **kwargs: int) -> str:
+        return f"int {key}"
+
+    assert f.registry == {object: f.__wrapped__, int: f_int}
+    assert f(1, key="k") == "int k"
 
 
 def test_register_evaluates_string_annotations():

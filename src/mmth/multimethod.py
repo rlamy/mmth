@@ -142,12 +142,17 @@ class Multimethod:
         return func, self._skip
 
     def _params(self, func: Any) -> list[inspect.Parameter]:
-        """Return `func`'s parameters past `self`/`cls`, if it has a signature."""
+        """Return `func`'s positional parameters past `self`/`cls`, if any.
+
+        Only positional arguments are dispatched on, so keyword-only
+        parameters and `**kwargs` are left out.
+        """
         func, skip = self._unwrap(func)
         try:
-            return list(inspect.signature(func).parameters.values())[skip:]
+            params = list(inspect.signature(func).parameters.values())[skip:]
         except (ValueError, TypeError):
             return []
+        return [p for p in params if p.kind not in (p.KEYWORD_ONLY, p.VAR_KEYWORD)]
 
     def _param_types(self, func: Any) -> tuple[Any, ...]:
         """Infer a registry key from `func`'s annotations, past `self`/`cls`.
