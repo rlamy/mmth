@@ -272,7 +272,8 @@ def _(a: Animal, d: Dog) -> str:
 
 # ERROR: Ambiguous - neither is more specialized than the other
 f(Dog(), Dog())
-# AmbiguousMatchError: Ambiguous lookup for types (Dog, Dog): matches several keys
+# AmbiguousMatchError: Ambiguous lookup for (Dog, Dog): matches (Dog, Animal),
+# (Animal, Dog), none more specific than the others
 ```
 
 ## Error Cases
@@ -292,7 +293,7 @@ bar = Multimethod(arity=1)
 def _(a: int) -> int:
     return a * 2
 
-bar("str")  # NoMatchError: No key matches types (<class 'str'>,)
+bar("str")  # NoMatchError: No key matches (str,)
 ```
 
 ## Design Decisions

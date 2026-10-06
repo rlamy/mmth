@@ -51,9 +51,9 @@ def test_arity_is_given_or_inferred_from_the_table():
             TypeMap(table)
     assert TypeMap(arity=2).arity == 2
     assert TypeMap({(Animal, Animal): "animal, animal"}).arity == 2
-    with pytest.raises(ValueError, match="has 1 types"):
+    with pytest.raises(ValueError, match="has 1 type,"):
         TypeMap({(Animal,): "animal"}, arity=2)
-    with pytest.raises(ValueError, match="has 1 types"):
+    with pytest.raises(ValueError, match="has 1 type,"):
         TypeMap({(Animal, Animal): "animal, animal", (Animal,): "animal"})
 
 
@@ -63,9 +63,9 @@ def test_keys_all_have_the_arity_of_the_parent():
         parent.lookup((Dog, Dog))
     child = ChainTypeMap(parent, {(Animal, Animal): "animal, animal"})
     assert child.arity == copy.copy(child).arity == 2
-    with pytest.raises(ValueError, match="has 1 types"):
+    with pytest.raises(ValueError, match="has 1 type,"):
         ChainTypeMap(parent, {(Animal,): "animal"})
-    with pytest.raises(ValueError, match="has 1 types"):
+    with pytest.raises(ValueError, match="has 1 type,"):
         child[(Animal,)] = "animal"
     assert child.lookup((Dog, Dog)) == "animal, animal"
     for key in [Dog, (Dog, Dog, Dog)]:
@@ -86,6 +86,27 @@ def test_lookup_raises_on_ambiguity():
     tm = TypeMap({(Dog,): "dog", (Pet,): "pet"})
     with pytest.raises(AmbiguousMatchError, match="Ambiguous lookup"):
         tm.lookup(PetDog)
+
+
+def test_errors_show_types_by_name():
+    tm = TypeMap({(Dog, Animal): "dog, animal", (Animal, Dog): "animal, dog"})
+    with pytest.raises(AmbiguousMatchError) as exc_info:
+        tm.lookup((Dog, Dog))
+    assert str(exc_info.value) == (
+        "Ambiguous lookup for (Dog, Dog): matches (Dog, Animal), (Animal, Dog), "
+        "none more specific than the others"
+    )
+    with pytest.raises(NoMatchError) as exc_info:
+        tm.lookup((int, type(None)))
+    assert str(exc_info.value) == "No key matches (int, None)"
+    with pytest.raises(TypeError) as exc_info:
+        tm.lookup(Dog)
+    assert str(exc_info.value) == "Expected 2 types, got 1: (Dog,)"
+    with pytest.raises(ValueError) as exc_info:
+        tm[(Dog,)] = "dog"
+    assert str(exc_info.value) == (
+        "Key (Dog,) has 1 type, but this type map's keys have 2"
+    )
 
 
 def test_lookup_falls_back_on_ancestors():

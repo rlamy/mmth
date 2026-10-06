@@ -397,7 +397,7 @@ def test_register_rejects_another_arity_than_the_default():
     def f(a, b) -> str:
         return "default"
 
-    with pytest.raises(ValueError, match="has 1 types"):
+    with pytest.raises(ValueError, match="has 1 type,"):
         f.register(int)(lambda a: "int")
     with pytest.raises(TypeError, match="Expected 2 types") as exc_info:
         f(1)

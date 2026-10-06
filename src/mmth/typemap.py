@@ -8,6 +8,24 @@ from typing import Any, Self
 _Signature = tuple[type, ...]
 
 
+def _type_name(t: Any) -> str:
+    """Return how error messages show type `t`: `None`, else its qualname."""
+    if t is type(None):
+        return "None"
+    return getattr(t, "__qualname__", repr(t))
+
+
+def _format_types(types: tuple[Any, ...]) -> str:
+    """Return how error messages show a tuple of types, e.g. `(int, str)`."""
+    names = [_type_name(t) for t in types]
+    return f"({names[0]},)" if len(names) == 1 else f"({', '.join(names)})"
+
+
+def _count(n: int, noun: str) -> str:
+    """Return e.g. `1 type` or `2 types`."""
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
 class NoMatchError(TypeError):
     """Raised by `TypeMap.lookup()` when no key matches."""
 
@@ -99,7 +117,7 @@ class TypeMap(MutableMapping[_Signature, Any]):
             if self._match_signature(sig, types)
         ]
         if not candidates:
-            raise NoMatchError(f"No key matches types {types}")
+            raise NoMatchError(f"No key matches {_format_types(types)}")
 
         # Not a running "best so far": a later candidate can dominate two
         # earlier, mutually incomparable ones.
@@ -111,14 +129,19 @@ class TypeMap(MutableMapping[_Signature, Any]):
             )
         ]
         if len(maximal) > 1:
+            keys = ", ".join(_format_types(sig) for sig, _ in maximal)
             raise AmbiguousMatchError(
-                f"Ambiguous lookup for types {types}: matches several keys"
+                f"Ambiguous lookup for {_format_types(types)}: matches {keys}, "
+                f"none more specific than the others"
             )
         return maximal[0][1]
 
     def _miss(self, types: _Signature) -> Any:
         if len(types) != self._arity:
-            raise TypeError(f"Expected {self._arity} types, got {types}")
+            raise TypeError(
+                f"Expected {_count(self._arity, 'type')}, got {len(types)}: "
+                f"{_format_types(types)}"
+            )
         table = self._lookup_table()
         if types in table:
             return table[types]
@@ -135,11 +158,11 @@ class TypeMap(MutableMapping[_Signature, Any]):
         `ValueError` if its length isn't this type map's `arity`.
         """
         if not all(isinstance(t, type) for t in sig):
-            raise TypeError(f"Key {sig} holds something other than classes")
+            raise TypeError(f"Key {sig!r} holds something other than classes")
         if len(sig) != self._arity:
             raise ValueError(
-                f"Key {sig} has {len(sig)} types, but this type map's keys "
-                f"have {self._arity}"
+                f"Key {_format_types(sig)} has {_count(len(sig), 'type')}, but "
+                f"this type map's keys have {self._arity}"
             )
         self._table[sig] = value
         if self._abc_token is None and any(
