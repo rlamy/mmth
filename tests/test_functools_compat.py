@@ -376,3 +376,35 @@ def test_any_differs_from_functools():
     reference, f = _both(build)
     assert reference(1) == "default"
     assert f(1) == "any"
+
+
+def test_class_as_implementation():
+    class Box:
+        def __init__(self, x):
+            self.x = x
+
+    def build(decorator):
+        @decorator
+        def f(x):
+            return "default"
+
+        f.register(int, func=Box)
+        return f
+
+    reference, f = _both(build)
+    assert type(f(1)) is type(reference(1)) is Box
+
+
+def test_register_type_then_class_differs_from_functools():
+    # functools takes the class as the implementation; mmth reads it as a
+    # second type, which a single dispatched argument has no room for
+    class Box:
+        def __init__(self, x):
+            self.x = x
+
+    reference = functools.singledispatch(lambda x: "default")
+    reference.register(int, Box)
+    f = dispatch(lambda x: "default")
+    with pytest.raises(TypeError, match="pass func=Box$"):
+        f.register(int, Box)
+    assert type(reference(1)) is Box

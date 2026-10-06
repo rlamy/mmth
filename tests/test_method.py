@@ -295,6 +295,22 @@ def test_inherit_function_raises_without_a_matching_base():
         pending.__set_name__(Orphan, "visit")
 
 
+def test_inherit_function_checks_the_number_of_types_with_its_base():
+    # called directly, as in test_inherit_function_raises_without_a_matching_base
+    class Base:
+        @dispatchmethod
+        def visit(self, node):
+            return "default"
+
+    class Sub(Base):
+        pass
+
+    pending = inherit()
+    pending.register(Num, Node)
+    with pytest.raises(TypeError, match=r"for visit\(Num, Node\): .* pass func=Node"):
+        pending.__set_name__(Sub, "visit")
+
+
 def test_inherit_function_register_rejects_non_function_at_once():
     with pytest.raises(TypeError, match=r"register\(\) expected a function"):
         inherit().register(int)(42)

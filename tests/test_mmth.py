@@ -517,10 +517,15 @@ def test_register_rejects_another_arity_than_the_default():
         return "int"
 
     with pytest.raises(TypeError) as exc_info:
-        f.register(int)(_)
+        f.register(int, _)
     assert str(exc_info.value) == (
         f"can't register {_located(_)} for f(int): {f.__qualname__} dispatches "
         f"on 2 arguments, not 1"
+    )
+    with pytest.raises(TypeError) as exc_info:
+        f.register(int)
+    assert str(exc_info.value) == (
+        f"can't register for f(int): {f.__qualname__} dispatches on 2 arguments, not 1"
     )
     with pytest.raises(TypeError, match=r"for f\(\): .* not 0$"):
         f[()] = lambda a, b: "nothing"
@@ -532,6 +537,48 @@ def test_register_rejects_another_arity_than_the_default():
     ) as exc_info:
         f(1)
     assert exc_info.type is TypeError
+
+
+def test_register_suggests_func_for_a_trailing_class():
+    class Box:
+        def __init__(self, x):
+            self.x = x
+
+    @dispatch
+    def f(a) -> str:
+        return "default"
+
+    with pytest.raises(TypeError) as exc_info:
+        f.register(int, Box)
+    assert str(exc_info.value) == (
+        f"can't register for f(int, Box): {f.__qualname__} dispatches on 1 "
+        f"argument, not 2; to register Box itself as the implementation, pass "
+        f"func=Box"
+    )
+    assert list(f.registry) == [object]
+
+
+def test_register_takes_a_class_as_implementation():
+    class Box:
+        def __init__(self, x: int):
+            self.x = x
+
+    @dispatch
+    def f(a) -> str:
+        return "default"
+
+    assert f.register(int, func=Box) is Box
+
+    @f.register(str)
+    class Label:
+        def __init__(self, text):
+            self.text = text
+
+    assert isinstance(f(1), Box)
+    assert isinstance(f("a"), Label)
+    assert f[int] is Box
+    with pytest.raises(TypeError, match="class Box for from annotations; pass "):
+        f.register(func=Box)
 
 
 def test_dispatch_takes_only_a_function():
@@ -983,7 +1030,7 @@ def test_arity_zero_dispatches_on_nothing():
 
     assert f() == "default"
     with pytest.raises(TypeError, match="dispatches on 0 arguments, not 1$"):
-        f.register(int)(lambda: "int")
+        f.register(int)
     f[()] = lambda: "replaced"
     assert f() == "replaced"
 

@@ -145,15 +145,22 @@ def _not_a_type_hint(t: Any) -> str:
     return ""
 
 
-def _is_function(obj: Any) -> bool:
-    """Return whether `obj` can be registered as an implementation.
+def _is_implementation(obj: Any) -> bool:
+    """Return whether `obj` can be registered as an implementation."""
+    return callable(obj) or isinstance(obj, (classmethod, staticmethod))
 
-    That is, a callable that isn't a type or other annotation (e.g.
-    `list[int]`, which is callable too), or a `classmethod`/`staticmethod`.
+
+def _is_function(obj: Any) -> bool:
+    """Return whether `obj` is an implementation rather than a type.
+
+    That is, one that isn't a type or other annotation (e.g. `list[int]`,
+    which is callable too).
     """
-    if isinstance(obj, (classmethod, staticmethod)):
-        return True
-    return callable(obj) and not isinstance(obj, type) and get_origin(obj) is None
+    return (
+        _is_implementation(obj)
+        and not isinstance(obj, type)
+        and get_origin(obj) is None
+    )
 
 
 def _parse_decorator_args(
@@ -175,16 +182,20 @@ def _register_with(
     add: Callable[[tuple[Any, ...] | None, Any], None],
     types: tuple[Any, ...],
     func: Any,
+    check: Callable[[tuple[Any, ...]], None],
 ) -> Any:
     """Handle `register()`'s arguments, registering through `add(types, func)`.
 
     `add` gets None for types to take from the annotations. Return `func`,
-    or without it a decorator that registers the function.
+    or without it a decorator that registers the function, once
+    `check(types)` has accepted any types: the decorator may never be applied.
     """
     types, func = _parse_decorator_args("register()", types, func)
+    if func is None and types:
+        check(types)
 
     def decorator(func: Any) -> Any:
-        if not _is_function(func):
+        if not _is_implementation(func):
             raise TypeError(f"register() expected a function, got {func!r}")
         add(types or None, func)
         return func
@@ -317,6 +328,12 @@ class Multimethod:
         Raise `TypeError` if it has fewer, or for a missing annotation, or one
         that can't be dispatched on.
         """
+        # A class's annotations are its attributes', not its parameters'.
+        if isinstance(func, type):
+            raise TypeError(
+                f"register() can't take the types to register class "
+                f"{_type_name(func)} for from annotations; pass them explicitly"
+            )
         func, params = self._params(func)
         params = [p for p in params or () if p.kind is not p.VAR_POSITIONAL]
         if len(params) < self._arity:
@@ -353,14 +370,33 @@ class Multimethod:
             types.append(annotation)
         return tuple(types)
 
+    def _check_count(self, types: tuple[Any, ...], func: Any = None) -> None:
+        """Raise `TypeError` unless there are `arity` types to register `func` for."""
+        if len(types) == self._arity:
+            return
+        registering = f"register {_describe(func)}" if func is not None else "register"
+        message = (
+            f"can't {registering} for {self._format_call(types, short=True)}: "
+            f"{self._name()} dispatches on {_count(self._arity, 'argument')}, "
+            f"not {len(types)}"
+        )
+        # As `functools.singledispatch` would read `register(int, SomeClass)`.
+        last = types[-1] if types else None
+        if (
+            func is None
+            and len(types) == self._arity + 1 > 1
+            and isinstance(last, type)
+        ):
+            message += (
+                f"; to register {_type_name(last)} itself as the "
+                f"implementation, pass func={_type_name(last)}"
+            )
+        raise TypeError(message)
+
     def _register(self, types: tuple[Any, ...] | None, func: Any) -> None:
         """Register `func` for `types`, or for its annotations if None."""
-        if types is not None and len(types) != self._arity:
-            raise TypeError(
-                f"can't register {_describe(func)} for "
-                f"{self._format_call(types, short=True)}: {self._name()} "
-                f"dispatches on {_count(self._arity, 'argument')}, not {len(types)}"
-            )
+        if types is not None:
+            self._check_count(types, func)
         impl = self._callable(func)
         if types is None:
             types = self._param_types(func)
@@ -386,9 +422,10 @@ class Multimethod:
         `@f.register(T1, T2)`, which take precedence over annotations; or
         functools-style, `f.register(T, func)`. A union type (`int | str`)
         registers the implementation for each member. Also accepts a
-        `classmethod` or `staticmethod`, for a method.
+        `classmethod` or `staticmethod`, for a method. Raise `TypeError` at
+        once for another number of types than `arity`.
         """
-        return _register_with(self._register, types, func)
+        return _register_with(self._register, types, func, self._check_count)
 
     def inherit(self) -> Self:
         """Return a multimethod for a subclass, inheriting this one's.
@@ -675,14 +712,16 @@ class _PendingInherit:
 
     def __init__(self) -> None:
         self._registrations: list[tuple[tuple[Any, ...] | None, Any]] = []
+        self._decorator_types: list[tuple[Any, ...]] = []
 
     def register(self, *types: Any, func: Any = None) -> Any:
-        # Annotations are only read once `__set_name__` has the real
-        # multimethod (and its `_skip`).
+        # Annotations, and how many types there are, are only checked once
+        # `__set_name__` has the real multimethod (and its `_skip`).
         return _register_with(
             lambda types, func: self._registrations.append((types, func)),
             types,
             func,
+            self._decorator_types.append,
         )
 
     def __set_name__(self, owner: type, name: str) -> None:
@@ -701,6 +740,8 @@ class _PendingInherit:
         dispatcher = parent.inherit()
         # Named first, for errors from the registrations.
         dispatcher.__set_name__(owner, name)
+        for decorator_types in self._decorator_types:
+            dispatcher._check_count(decorator_types)
         for types, func in self._registrations:
             dispatcher._register(types, func)
         setattr(owner, name, dispatcher)

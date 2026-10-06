@@ -58,6 +58,13 @@ Also as with `functools.singledispatch`:
   member.
 - `function_name.register(Type, impl)` or `.register(Type, func=impl)`
   registers `impl` directly, rather than returning a decorator.
+- An implementation can be any callable, a class included; but since a
+  class is also a type, pass it as `func=SomeClass` (or decorate it), and
+  pass the types explicitly, as its annotations aren't its parameters'.
+
+`register(*types)` checks at once that there are as many types as the
+multimethod's arity, rather than when the decorator it returns is applied,
+if ever.
 
 ### 3. Register an Implementation (Metaprogramming)
 
@@ -183,6 +190,10 @@ like `functools.singledispatch` and `functools.singledispatchmethod`, except:
   ordinary `dispatchmethod` can only be called through an instance; a
   `dispatchmethod` that is itself a `classmethod`/`staticmethod` works
   through either, as in functools.
+- **`register(Type, SomeClass)` reads the class as a type**, as it does
+  any other type, so with one dispatched argument it raises `TypeError`,
+  suggesting `func=SomeClass`; functools registers the class as the
+  implementation.
 - **`classmethod`/`staticmethod` implementations are stored adapted**:
   `registry` and `func[types]` hold a plain function that takes the
   multimethod's own arguments, not the `classmethod`/`staticmethod` object
