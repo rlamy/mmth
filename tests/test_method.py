@@ -468,3 +468,21 @@ def test_classmethod_call_lacks_an_argument_after_cls():
         TypeError, match=r"to dispatch on after cls, got 0; pass 'node'"
     ):
         Handler.visit(node=1)
+
+
+def test_register_in_a_class_body_on_that_class_says_so():
+    with pytest.raises(TypeError) as exc_info:
+
+        class Shape:
+            @dispatchmethod
+            def overlaps(self, other: object):
+                return False
+
+            @overlaps.register
+            def _(self, other: "Shape"):
+                return True
+
+    assert str(exc_info.value).endswith(
+        "(name 'Shape' is not defined); Shape is still being defined, so "
+        "register this after the class body instead"
+    )

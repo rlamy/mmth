@@ -95,10 +95,17 @@ def _resolve(func: Any, name: str, annotation: Any) -> Any:
         # Shown when it's all a forward reference, not just part of it.
         source = getattr(annotation, "__forward_arg__", annotation)
         shown = f" {source!r}" if isinstance(source, str) else ""
+        advice = "define it before registering, or pass the types explicitly"
+        # Registering in a class body, on that class.
+        scope = getattr(func, "__qualname__", "").split(".")[-2:-1]
+        if scope and getattr(e, "name", None) == scope[0]:
+            advice = (
+                f"{scope[0]} is still being defined, so register this after the "
+                f"class body instead"
+            )
         raise TypeError(
             f"register() can't resolve the annotation{shown} of parameter "
-            f"{name!r} of {_describe(func)} ({e}); define it before "
-            f"registering, or pass the types explicitly"
+            f"{name!r} of {_describe(func)} ({e}); {advice}"
         ) from None
 
 
