@@ -108,6 +108,27 @@ def test_dispatchmethod_method_registered_twice_is_one_implementation():
     assert Handler().visit("s") == "shared"
 
 
+def test_dispatchmethod_adapted_methods_wrap_the_function():
+    def static(node):
+        return "static"
+
+    def method(cls, node):
+        return f"class {cls.__name__}"
+
+    class Handler:
+        @dispatchmethod
+        def visit(self, node: object):
+            return "default"
+
+    Handler.visit.register(int, staticmethod(static))
+    Handler.visit.register(str, classmethod(method))
+    assert Handler.visit[int].__wrapped__ is static
+    assert Handler.visit[int].__qualname__ == static.__qualname__
+    assert Handler.visit[str].__wrapped__ is method
+    assert Handler().visit(1) == "static"
+    assert Handler().visit("s") == "class Handler"
+
+
 def test_dispatchmethod_takes_an_arity():
     class Handler:
         @dispatchmethod(arity=1)

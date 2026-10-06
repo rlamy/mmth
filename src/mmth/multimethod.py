@@ -382,17 +382,25 @@ class Multimethod:
         it, and a `classmethod` gets the instance's class in its place (or
         the class itself, already, for a `classmethod` dispatchmethod).
         """
-        if isinstance(func, staticmethod):
-            static = func.__func__
-            if not self._skip:
-                return static
-            return lambda _self, *args, **kwargs: static(*args, **kwargs)
-        if not self._skip:
-            return func
         method = func.__func__
-        if self._binds_class:
-            return method
-        return lambda obj, *args, **kwargs: method(type(obj), *args, **kwargs)
+        if isinstance(func, staticmethod):
+            if not self._skip:
+                return method
+
+            def adapted(obj: Any, *args: Any, **kwargs: Any) -> Any:
+                return method(*args, **kwargs)
+
+        else:
+            if not self._skip:
+                return func
+            if self._binds_class:
+                return method
+
+            def adapted(obj: Any, *args: Any, **kwargs: Any) -> Any:
+                return method(type(obj), *args, **kwargs)
+
+        # So that errors and `registry` show the method itself.
+        return functools.update_wrapper(adapted, method)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Call the implementation chosen by the arguments' types."""
