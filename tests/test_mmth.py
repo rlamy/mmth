@@ -1,6 +1,7 @@
 import functools
 import re
 import sys
+from collections.abc import Iterable, Sized
 from typing import (
     Annotated,
     Any,
@@ -211,6 +212,21 @@ def test_ambiguity_error_locates_candidates_and_suggests_a_fix():
     assert exc_info.value.types == (B, B, Both)
     assert [impl for _, impl in exc_info.value.candidates] == [first, second]
     assert exc_info.value.__suppress_context__
+
+
+def test_ambiguity_error_shows_builtins():
+    @dispatch
+    def f(a) -> str:
+        return "default"
+
+    f.register(Sized, len)
+    f.register(Iterable, iter)
+    with pytest.raises(AmbiguousMatchError) as exc_info:
+        f([])
+    assert str(exc_info.value).splitlines()[1:3] == [
+        f"  f(Sized): {len!r}",
+        f"  f(Iterable): {iter!r}",
+    ]
 
 
 def test_default_fallback_no_registrations():

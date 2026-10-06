@@ -103,10 +103,12 @@ def _describe(func: Any) -> str:
     """
     func = inspect.unwrap(func)
     name = getattr(func, "__qualname__", None)
-    code = getattr(func, "__code__", None)
-    if name is None or code is None:
+    # PyPy's builtins have code, without a location.
+    code: Any = getattr(func, "__code__", None)
+    filename = getattr(code, "co_filename", None)
+    if name is None or filename is None:
         return repr(func)
-    return f"{name} at {code.co_filename}:{code.co_firstlineno}"
+    return f"{name} at {filename}:{code.co_firstlineno}"
 
 
 def _not_a_type_hint(t: Any) -> str:
