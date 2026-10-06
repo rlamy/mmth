@@ -128,7 +128,7 @@ class Multimethod:
 
     def __init__(
         self,
-        func: Callable[..., Any] | None = None,
+        func: Any = None,
         *,
         arity: int | None = None,
         _skip: int = 0,
