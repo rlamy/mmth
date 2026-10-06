@@ -3,6 +3,7 @@
 import functools
 import inspect
 import itertools
+import operator
 import sys
 from collections.abc import Mapping
 from types import MappingProxyType, MethodType, NoneType, SimpleNamespace, UnionType
@@ -231,7 +232,16 @@ class Multimethod:
         takes `*args`, where it's required, or to override `func`'s. A call
         matching no registration raises `NoMatchError`. The underscored
         arguments are internal, set by `dispatchmethod` and `inherit()`.
+        Raise `TypeError` for an `arity` that isn't an integer, and
+        `ValueError` for a negative one.
         """
+        if arity is not None:
+            try:
+                arity = operator.index(arity)
+            except TypeError:
+                raise TypeError(f"arity must be an integer, got {arity!r}") from None
+            if arity < 0:
+                raise ValueError(f"arity must be at least 0, got {arity}")
         self._skip = _skip
         self._binds_class = _binds_class
         self._adapted: dict[Any, Any] = {}

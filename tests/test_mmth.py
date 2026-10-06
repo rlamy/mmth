@@ -448,6 +448,21 @@ def test_dispatch_takes_an_arity():
     assert dispatch(g, arity=2).registry == {(object, object): g}
 
 
+def test_arity_must_be_a_natural_number():
+    def f(*args) -> str:
+        return "default"
+
+    for arity in ["2", 1.5]:
+        with pytest.raises(
+            TypeError, match=f"^arity must be an integer, got {arity!r}$"
+        ):
+            dispatch(f, arity=arity)
+    with pytest.raises(ValueError, match="^arity must be at least 0, got -1$"):
+        dispatch(arity=-1)(f)
+    with pytest.raises(ValueError, match="^arity must be at least 0, got -1$"):
+        Multimethod(arity=-1)
+
+
 def test_dispatch_default_arity_ignores_keyword_only_params():
     @dispatch
     def f(a, *, key=None, **kwargs) -> str:
