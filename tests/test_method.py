@@ -486,3 +486,17 @@ def test_register_in_a_class_body_on_that_class_says_so():
         "(name 'Shape' is not defined); Shape is still being defined, so "
         "register this after the class body instead"
     )
+
+
+def test_inherited_multimethod_assigned_later_takes_the_base_name():
+    class Base:
+        @dispatchmethod
+        def visit(self, node: object):
+            return "default"
+
+    class Sub(Base):
+        pass
+
+    Sub.visit = Base.visit.inherit()
+    with pytest.raises(TypeError, match=r"^visit\(\) takes 1 positional argument"):
+        Sub().visit()

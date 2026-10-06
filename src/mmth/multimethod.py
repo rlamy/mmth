@@ -399,11 +399,15 @@ class Multimethod:
                     ...
                     return super().visit(x)
         """
-        return type(self)(
+        child = type(self)(
             _skip=self._skip,
             _binds_class=self._binds_class,
             _registry=ChainTypeMap(self._registry),
         )
+        # Until `__set_name__` gives it a qualname, if ever.
+        if hasattr(self, "__name__"):
+            child.__name__ = self.__name__
+        return child
 
     def _as_types(
         self, caller: str, types: _TypeSpec | tuple[_TypeSpec, ...]
@@ -517,7 +521,8 @@ class Multimethod:
 
     def _name(self) -> str:
         """Return how error messages name this multimethod."""
-        return getattr(self, "__qualname__", type(self).__name__)
+        name = getattr(self, "__name__", type(self).__name__)
+        return getattr(self, "__qualname__", name)
 
     def _format_call(self, types: tuple[Any, ...], short: bool = False) -> str:
         """Return how error messages show a call with arguments of `types`.
