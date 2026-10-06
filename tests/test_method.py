@@ -359,3 +359,24 @@ def test_inherit_register_accepts_types_outside_the_base_default():
     LenientHandler.visit.register(int)(lambda self, node: "int")
     assert LenientHandler().visit(1) == "int"
     assert Handler().visit(1) == "default"
+
+
+def test_inherited_multimethods_take_their_attribute_name():
+    class Base:
+        @dispatchmethod
+        def visit(self, node: object):
+            return "default"
+
+        alias = visit
+
+    class Sub(Base):
+        visit = inherit()
+
+    class Explicit(Base):
+        visit = Base.visit.inherit()
+
+    prefix = "test_inherited_multimethods_take_their_attribute_name.<locals>."
+    assert Base.visit.__qualname__ == f"{prefix}Base.visit"
+    assert Sub.visit.__qualname__ == f"{prefix}Sub.visit"
+    assert Explicit.visit.__qualname__ == f"{prefix}Explicit.visit"
+    assert Sub.visit.__name__ == "visit"

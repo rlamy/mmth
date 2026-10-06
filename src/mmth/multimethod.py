@@ -420,6 +420,15 @@ class Multimethod:
         impl = self._registry.lookup(key)
         return impl(*args, **kwargs)
 
+    def __set_name__(self, owner: type, name: str) -> None:
+        """Take the attribute's name, unless named after a default already.
+
+        So that a subclass's `inherit()`ed multimethod is named in errors.
+        """
+        if "__qualname__" not in vars(self):
+            self.__name__ = name
+            self.__qualname__ = f"{owner.__qualname__}.{name}"
+
     def __get__(self, instance: object | None, owner: type | None = None) -> Any:
         """Bind to `instance` as a method, or to `owner` for a classmethod."""
         if self._binds_class:
@@ -462,6 +471,7 @@ class _PendingInherit:
         dispatcher = parent.inherit()
         for types, func in self._registrations:
             dispatcher.register(*types, func=func)
+        dispatcher.__set_name__(owner, name)
         setattr(owner, name, dispatcher)
 
 
