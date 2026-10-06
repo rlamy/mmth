@@ -314,10 +314,28 @@ def test_dispatch_default_matches_object_whatever_its_annotations():
     def f(a: str, b=None) -> str:
         return "default"
 
-    assert f.registry == {(object, object): f.__wrapped__}
+    assert f.registry == {object: f.__wrapped__}
     with pytest.raises(KeyError):
-        f[str, object]
-    assert f(1, 2) == "default"
+        f[str]
+    assert f(1) == f(1, 2) == "default"
+
+
+def test_calls_dispatch_on_the_required_positional_params():
+    @dispatch
+    def f(a, b, c=None) -> str:
+        return f"default {c}"
+
+    @f.register
+    def _(a: int, b: int, c: str = "unset") -> str:
+        return f"int, int {c}"
+
+    assert f.registry == {(object, object): f.__wrapped__, (int, int): _}
+    assert f(1, 2) == "int, int unset"
+    assert f(1, 2, "c") == "int, int c"
+    assert f("a", 2, c="c") == "default c"
+    with pytest.raises(TypeError, match="Expected 2 types") as exc_info:
+        f(1)
+    assert exc_info.type is TypeError
 
 
 def test_dispatch_default_arity_ignores_keyword_only_params():
@@ -339,7 +357,9 @@ def test_multimethod_needs_a_default_or_an_arity():
     def varargs(*args):
         return len(args)
 
-    assert Multimethod(varargs, arity=2)(1, 2) == 2
+    with pytest.raises(TypeError, match=r"takes \*args; pass arity"):
+        dispatch(varargs)
+    assert Multimethod(varargs, arity=2)(1, 2, 3) == 3
 
     def opaque(*args):
         return len(args)
@@ -475,8 +495,14 @@ def test_register_requires_parameters_to_dispatch_on():
     def f(a: object) -> str:
         return "default"
 
-    with pytest.raises(TypeError, match="no parameters to dispatch on"):
+    with pytest.raises(TypeError, match="too few parameters to dispatch on"):
         f.register(lambda: "g")
+
+    def h(*args: int) -> str:
+        return "h"
+
+    with pytest.raises(TypeError, match="too few parameters to dispatch on"):
+        f.register(h)
 
 
 def test_register_rejects_non_types():

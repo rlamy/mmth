@@ -12,17 +12,19 @@ def function_name(arg1, arg2, ...) -> ReturnType:
 ```
 
 The decorated function is the **default implementation**, registered for
-`object` at every parameter, so it's called whenever no more specific
-signature matches. As with `functools.singledispatch`, its annotations are
-ignored. Like any registration, it only matches calls with as many
-positional arguments as it has parameters.
+`object` at every required positional parameter, so it's called whenever no
+more specific signature matches. As with `functools.singledispatch`, its
+annotations are ignored. Their number is the multimethod's **arity**: a call
+dispatches on its first `arity` positional arguments, and passes any others,
+like optional parameters, on to the implementation without dispatching on
+them.
 The multimethod takes on the default's `__name__`, `__doc__`, `__wrapped__`,
 etc., as with `functools.wraps`.
 
-The number of parameters comes from the default's signature, which some
-callables don't have: whether builtins like `max` do depends on the Python
-implementation. Without one, `dispatch` can't tell the arity and raises
-`TypeError`; pass it explicitly instead, as in `Multimethod(max, arity=2)`.
+`dispatch` refuses to guess the arity of a default that takes `*args`, or
+that has no signature to read (whether builtins like `max` do depends on the
+Python implementation), and raises `TypeError`; pass it explicitly instead,
+as in `Multimethod(max, arity=2)`.
 
 ### 2. Register an Implementation (Main Syntax)
 
@@ -111,10 +113,11 @@ When `function_name(arg1, arg2, ...)` is called:
 - **Subclass types**: `Animal` matches `Dog` if `Dog` is subclass of `Animal`
 - **Single type shorthand**: `func[int]` is equivalent to `func[(int,)]`
 - **One arity**: every signature has the multimethod's arity, as many types
-  as the default has positional parameters (or `Multimethod(arity=n)`,
-  required without a default); registering another length raises
-  `ValueError`, and a call with another number of positional arguments
-  raises `TypeError` (not `NoMatchError`)
+  as the default has required positional parameters (or
+  `Multimethod(arity=n)`, required without a default); registering another
+  length raises `ValueError`, and a call with fewer positional arguments
+  raises `TypeError` (not `NoMatchError`). Registering by annotations reads
+  those of the implementation's first `arity` positional parameters
 - **ABCs**: matching uses `issubclass`, so abstract base classes match their
   virtual subclasses (via `ABC.register()` or `__subclasshook__`), including
   ones registered after the multimethod was first called

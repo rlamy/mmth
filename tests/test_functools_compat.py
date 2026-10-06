@@ -56,6 +56,23 @@ def test_matches_functools_on_single_inheritance_trees(data):
         assert f(cls()) == reference(cls())
 
 
+def test_optional_parameters_are_passed_on():
+    def build(decorator):
+        @decorator
+        def fun(arg, verbose=False):
+            return f"default {verbose}"
+
+        @fun.register
+        def _(arg: int, verbose=False):
+            return f"int {verbose}"
+
+        return fun
+
+    reference, fun = _both(build)
+    for args, kwargs in [((1,), {}), ((1, True), {}), (("s",), {"verbose": True})]:
+        assert fun(*args, **kwargs) == reference(*args, **kwargs)
+
+
 def test_register_union_type():
     def build(decorator):
         @decorator

@@ -378,9 +378,12 @@ memoizes a successful resolution by argument types, invalidated on any
 change (cascading to `inherit()` descendants, whose `ChainTypeMap`
 looks among `parent | child`) - see docs/performance.md.
 
-The default is registered for `object` at every parameter, ignoring its
-annotations, as in `functools.singledispatch`; it's an ordinary table
-entry, with no catch-all for other arities. With one dispatched argument, behaviour matches
+The default is registered for `object` at every required positional
+parameter, ignoring its annotations, as in `functools.singledispatch`; it's
+an ordinary table entry. That count is the multimethod's arity: calls
+dispatch on their first `arity` positional arguments and pass any others
+on (`*args` defaults need an explicit `Multimethod(func, arity=n)`). With one
+dispatched argument, behaviour matches
 `functools.singledispatch`/`singledispatchmethod` except where
 docs/specification.md ("Differences from `functools.singledispatch`") says
 otherwise; `tests/test_functools_compat.py` checks this against functools

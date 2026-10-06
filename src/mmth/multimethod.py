@@ -119,6 +119,7 @@ class Multimethod:
     # (see docs/performance.md).
     __slots__ = (
         "_registry",
+        "_arity",
         "_skip",
         "_binds_class",
         "_adapted",
@@ -137,13 +138,14 @@ class Multimethod:
     ) -> None:
         """Create a multimethod with `func` as its default implementation.
 
-        Every registration takes as many dispatched arguments as `func` has
-        positional parameters (past `self`/`cls`), and `func` is registered
-        for `object` at each of them, whatever its annotations. Pass `arity`
-        only for a multimethod without a default (where it's required), or
-        to override `func`'s, e.g. for `*args`. A call matching no
-        registration raises `NoMatchError`. The underscored arguments are
-        internal, set by `dispatchmethod` and `inherit()`.
+        A call dispatches on its first `arity` positional arguments (past
+        `self`/`cls`), by default as many as `func` has required positional
+        parameters; any others are passed on, not dispatched on. `func` is
+        registered for `object` at each of them, whatever its annotations.
+        Pass `arity` for a multimethod without a default, or a default that
+        takes `*args`, where it's required, or to override `func`'s. A call
+        matching no registration raises `NoMatchError`. The underscored
+        arguments are internal, set by `dispatchmethod` and `inherit()`.
         """
         self._skip = _skip
         self._binds_class = _binds_class
@@ -156,18 +158,29 @@ class Multimethod:
                     )
                 _registry = TypeMap(arity=arity)
             self._registry: TypeMap = _registry
+            self._arity = _registry.arity
             return
         functools.update_wrapper(self, func)
         self.__isabstractmethod__ = getattr(func, "__isabstractmethod__", False)
         if arity is None:
-            _, params = self._params(func)
-            if params is None:
-                raise TypeError(
-                    f"Multimethod() can't read the signature of {func!r} to "
-                    f"infer its arity; pass arity explicitly"
-                )
-            arity = len(params)
+            arity = self._infer_arity(func)
         self._registry = TypeMap({(object,) * arity: self._callable(func)})
+        self._arity = arity
+
+    def _infer_arity(self, func: Any) -> int:
+        """Return how many required positional parameters `func` has."""
+        _, params = self._params(func)
+        if params is None:
+            raise TypeError(
+                f"Multimethod() can't read the signature of {func!r} to "
+                f"infer its arity; pass arity explicitly"
+            )
+        if any(p.kind is p.VAR_POSITIONAL for p in params):
+            raise TypeError(
+                f"Multimethod() can't infer the arity of {func!r}, which takes "
+                f"*args; pass arity explicitly"
+            )
+        return sum(p.default is p.empty for p in params)
 
     def _unwrap(self, func: Any) -> tuple[Callable[..., Any], int]:
         """Return `func`'s plain function, and how many leading params to skip."""
@@ -199,16 +212,24 @@ class Multimethod:
     def _param_types(self, func: Any) -> tuple[Any, ...]:
         """Infer a registry key from `func`'s annotations, past `self`/`cls`.
 
-        Raise `TypeError` for a missing annotation, or one that can't be
-        dispatched on.
+        Read those of its first `arity` positional parameters, `*args` aside.
+        Raise `TypeError` if it has fewer, or for a missing annotation, or one
+        that can't be dispatched on.
         """
         func, params = self._params(func)
+        params = [p for p in params or () if p.kind is not p.VAR_POSITIONAL]
+        if len(params) < self._arity:
+            raise TypeError(
+                f"register() found too few parameters to dispatch on in "
+                f"{func.__qualname__}: needs {self._arity}; pass the types "
+                f"explicitly"
+            )
         try:
             hints = get_type_hints(func)
         except NameError:  # a forward reference that doesn't resolve yet
             hints = {}
         types = []
-        for p in params or ():
+        for p in params[: self._arity]:
             annotation = hints.get(p.name, p.annotation)
             # Checked first, since `Parameter.empty` is itself a class.
             if annotation is p.empty:
@@ -224,11 +245,6 @@ class Multimethod:
                     f"types explicitly"
                 )
             types.append(annotation)
-        if not types:
-            raise TypeError(
-                f"register() found no parameters to dispatch on in "
-                f"{func.__qualname__}; pass the types explicitly"
-            )
         return tuple(types)
 
     def _register(self, types: tuple[Any, ...], func: Any) -> None:
@@ -249,7 +265,8 @@ class Multimethod:
     def register(self, *types: Any, func: Any = None) -> Any:
         """Register an implementation for the given types, or its annotations.
 
-        Without types, every parameter must be annotated with a type. Use
+        Without types, the implementation's first `arity` positional
+        parameters (past `self`/`cls`) must be annotated with types. Use
         either bare, `@f.register`, or with explicit types,
         `@f.register(T1, T2)`, which take precedence over annotations; or
         functools-style, `f.register(T, func)`. A union type (`int | str`)
@@ -366,10 +383,14 @@ class Multimethod:
         # `__class__`, not `type()`, so proxies like `Mock(spec=cls)`
         # dispatch as that class.
         key: type | tuple[type, ...]
-        if len(args) - self._skip == 1:
-            key = args[self._skip].__class__
+        skip = self._skip
+        if self._arity == 1:
+            try:
+                key = args[skip].__class__
+            except IndexError:
+                key = ()  # too few arguments: let lookup() raise
         else:
-            key = tuple(arg.__class__ for arg in args[self._skip :])
+            key = tuple(arg.__class__ for arg in args[skip : skip + self._arity])
         return self._registry.lookup(key)(*args, **kwargs)
 
     def __get__(self, instance: object | None, owner: type | None = None) -> Any:
@@ -441,9 +462,12 @@ def inherit() -> Multimethod:
 def dispatch(func: Callable[..., Any]) -> Multimethod:
     """Turn a function into a multimethod, with it as the default.
 
-    The default implementation is registered for `object` at every
-    parameter, so it's called whenever no more specific signature matches:
-    as with `functools.singledispatch`, its annotations are ignored.
+    The default implementation is registered for `object` at every required
+    positional parameter, so it's called whenever no more specific signature
+    matches: as with `functools.singledispatch`, its annotations are ignored.
+    Calls dispatch on that many positional arguments, and pass any others on.
+    Raise `TypeError` if the default takes `*args`, or its signature can't be
+    read: use `Multimethod(func, arity=n)` instead.
     """
     if not _is_function(func):
         raise TypeError(f"dispatch() expected a function, got {func!r}")
