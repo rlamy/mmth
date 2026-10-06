@@ -135,7 +135,13 @@ class Multimethod:
         functools.update_wrapper(self, func)
         self.__isabstractmethod__ = getattr(func, "__isabstractmethod__", False)
         if arity is None:
-            arity = len(self._params(func))
+            params = self._params(func)
+            if params is None:
+                raise TypeError(
+                    f"Multimethod() can't read the signature of {func!r} to "
+                    f"infer its arity; pass arity explicitly"
+                )
+            arity = len(params)
         self._registry = TypeMap({(object,) * arity: self._callable(func)})
 
     def _unwrap(self, func: Any) -> tuple[Callable[..., Any], int]:
@@ -146,17 +152,18 @@ class Multimethod:
             return func.__func__, 1
         return func, self._skip
 
-    def _params(self, func: Any) -> list[inspect.Parameter]:
-        """Return `func`'s positional parameters past `self`/`cls`, if any.
+    def _params(self, func: Any) -> list[inspect.Parameter] | None:
+        """Return `func`'s positional parameters past `self`/`cls`.
 
         Only positional arguments are dispatched on, so keyword-only
-        parameters and `**kwargs` are left out.
+        parameters and `**kwargs` are left out. Return None if `func` has
+        no signature to read.
         """
         func, skip = self._unwrap(func)
         try:
             params = list(inspect.signature(func).parameters.values())[skip:]
         except (ValueError, TypeError):
-            return []
+            return None
         return [p for p in params if p.kind not in (p.KEYWORD_ONLY, p.VAR_KEYWORD)]
 
     def _param_types(self, func: Any) -> tuple[Any, ...]:
@@ -165,7 +172,7 @@ class Multimethod:
         Raise `TypeError` for a missing annotation, or one that can't be
         dispatched on.
         """
-        params = self._params(func)
+        params = self._params(func) or []
         func, _ = self._unwrap(func)
         try:
             hints = get_type_hints(func)

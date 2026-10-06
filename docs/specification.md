@@ -19,6 +19,11 @@ positional arguments as it has parameters.
 The multimethod takes on the default's `__name__`, `__doc__`, `__wrapped__`,
 etc., as with `functools.wraps`.
 
+The number of parameters comes from the default's signature, which some
+callables don't have: whether builtins like `max` do depends on the Python
+implementation. Without one, `dispatch` can't tell the arity and raises
+`TypeError`; pass it explicitly instead, as in `Multimethod(max, arity=2)`.
+
 ### 2. Register an Implementation (Main Syntax)
 
 ```python

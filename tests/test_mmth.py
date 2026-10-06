@@ -341,6 +341,15 @@ def test_multimethod_needs_a_default_or_an_arity():
 
     assert Multimethod(varargs, arity=2)(1, 2) == 2
 
+    def opaque(*args):
+        return len(args)
+
+    # Builtins like `max` have no signature on CPython, but do on PyPy.
+    opaque.__signature__ = "unreadable"
+    with pytest.raises(TypeError, match="can't read the signature"):
+        dispatch(opaque)
+    assert Multimethod(opaque, arity=2)(1, 2) == 2
+
     @dispatch
     def nullary() -> str:
         return "default"
