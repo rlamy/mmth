@@ -808,6 +808,8 @@ def test_dispatch_method_errors_match_a_calls():
         TypeError, match=r"^dispatch\(\) expected 1 type, got 2: \(A, B\)$"
     ):
         f.dispatch(A, B)
+    with pytest.raises(TypeError, match=r"got 2: \(A \| B \| None, int\)$"):
+        f.dispatch(Optional[A | B], int)
     for cls, error in [(AB, AmbiguousMatchError), (int, NoMatchError)]:
         with pytest.raises(error) as from_dispatch:
             f.dispatch(cls)

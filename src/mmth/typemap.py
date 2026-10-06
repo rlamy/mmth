@@ -3,20 +3,27 @@
 import weakref
 from abc import get_cache_token
 from collections.abc import Iterator, Mapping, MutableMapping
-from typing import Any, Self
+from types import UnionType
+from typing import Any, Self, Union, get_args, get_origin
 
 _Signature = tuple[type, ...]
 
 
 def _type_name(t: Any) -> str:
-    """Return how error messages show type `t`: `None`, else its qualname.
+    """Return how error messages show type annotation `t`, e.g. a class's qualname.
 
     Leave out the enclosing functions of a class defined in one, as Python
     does in its own messages.
     """
     if t is type(None):
         return "None"
-    return getattr(t, "__qualname__", repr(t)).rpartition("<locals>.")[2]
+    if get_origin(t) in (Union, UnionType):
+        return " | ".join(_type_name(member) for member in get_args(t))
+    # Only a class's qualname: other annotations may have one too, like
+    # `Union` for `int | str` since Python 3.14.
+    if not isinstance(t, type):
+        return repr(t)
+    return t.__qualname__.rpartition("<locals>.")[2]
 
 
 def _format_types(types: tuple[Any, ...]) -> str:
