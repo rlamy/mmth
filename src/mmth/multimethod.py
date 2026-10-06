@@ -411,130 +411,6 @@ class Multimethod:
         for sig in _expand(types):
             self._registry[sig] = impl
 
-    # The types-first order matters: a type is itself callable, so
-    # `register(int)` would otherwise match the bare-decorator overload.
-    @overload
-    def register(self, *types: _TypeSpec) -> Callable[[Any], _Registered]: ...
-    @overload
-    def register(self, func: Any, /) -> _Registered: ...
-    @overload
-    def register(self, cls: _TypeSpec, func: Any, /) -> _Registered: ...
-    @overload
-    def register(self, *types: _TypeSpec, func: Any) -> _Registered: ...
-    def register(self, *types: Any, func: Any = None) -> Any:
-        """Register an implementation for the given types, or its annotations.
-
-        Without types, the implementation's first `arity` positional
-        parameters (past `self`/`cls`) must be annotated with types. Use
-        either bare, `@f.register`, or with explicit types,
-        `@f.register(T1, T2)`, which take precedence over annotations; or
-        functools-style, `f.register(T, func)`. A union type (`int | str`)
-        registers the implementation for each member. Also accepts a
-        `classmethod` or `staticmethod`, for a method. Raise `TypeError` at
-        once for another number of types than `arity`.
-        """
-        return _register_with(self._register, types, func, self._check_count)
-
-    def inherit(self) -> Self:
-        """Return a multimethod for a subclass, inheriting this one's.
-
-        It dispatches on `base | sub` registrations: its own replace those
-        for the same types, and the most specific of all the others wins
-        (see docs/methods.md):
-
-            class Sub(Base):
-                visit = Base.visit.inherit()
-
-                @visit.register(SomeType)
-                def _(self, x):
-                    ...
-                    return super().visit(x)
-        """
-        child = type(self)(
-            _skip=self._skip,
-            _binds_class=self._binds_class,
-            _registry=ChainTypeMap(self._registry),
-        )
-        # As `update_wrapper` would, but leaving its qualname to
-        # `__set_name__`, and not abstract: like a method, it overrides.
-        vars(child).update(
-            (key, value)
-            for key, value in vars(self).items()
-            if key not in ("__qualname__", "__isabstractmethod__")
-        )
-        return child
-
-    def __getitem__(
-        self, types: _TypeSpec | tuple[_TypeSpec, ...]
-    ) -> Callable[..., Any]:
-        """Return the implementation registered for exactly `types`.
-
-        A single type stands for a one-element tuple. For a union, the same
-        implementation must be registered for every member. Registered on
-        an `inherit()` base counts, unless replaced. Raise `KeyError` if
-        there's no such implementation.
-        """
-        types = _as_types("__getitem__()", types)
-        table = self._registry._lookup_table()
-        impls: list[Callable[..., Any] | None] = [
-            table.get(sig) for sig in _expand(types)
-        ]
-        if impls[0] is not None and all(impl is impls[0] for impl in impls):
-            return impls[0]
-        if len(types) != self._arity:
-            raise KeyError(
-                f"No implementation registered for {self._format_call(types)}: "
-                f"{self._name()} dispatches on {_count(self._arity, 'argument')}"
-            )
-        if None in impls:
-            raise KeyError(
-                f"No implementation registered for exactly {self._format_call(types)}"
-            )
-        raise KeyError(
-            f"No one implementation registered for every member of "
-            f"{self._format_call(types)}"
-        )
-
-    def __setitem__(self, types: _TypeSpec | tuple[_TypeSpec, ...], func: Any) -> None:
-        """Register `func` for `types`, a single type or a tuple of them."""
-        types = _as_types("__setitem__()", types)
-        self._register(types, func)
-
-    @property
-    def registry(self) -> Mapping[Any, Any]:
-        """Read-only mapping of the registered implementations, by signature.
-
-        Keyed by a bare type for a single argument, as in
-        `functools.singledispatch`, else by a tuple of types. Those of an
-        `inherit()` base are included, unless replaced, as calls see them.
-        """
-        table = self._registry._lookup_table()
-        return MappingProxyType(
-            {sig[0] if len(sig) == 1 else sig: f for sig, f in table.items()}
-        )
-
-    def dispatch(self, *types: _TypeSpec) -> Any:
-        """Return the implementation a call with arguments of `types` would run."""
-        types, _ = _parse_decorator_args("dispatch()", types)
-        if len(types) != self._arity:
-            raise TypeError(
-                f"dispatch() expected {_count(self._arity, 'type')}, got "
-                f"{len(types)}: {_format_types(types)}"
-            )
-        sigs = _expand(types)
-        if len(sigs) != 1:
-            raise TypeError(
-                f"dispatch() expected one class per argument, got "
-                f"{_format_types(types)}"
-            )
-        try:
-            return self._registry.lookup(sigs[0])
-        except TypeError as e:
-            error = self._lookup_error(e)
-            if error is None:
-                raise
-            raise error from None
-
     def _callable(self, func: Any) -> Any:
         """Adapt `func` to be called with this multimethod's own arguments.
 
@@ -669,6 +545,130 @@ class Multimethod:
         if len(args) - self._skip < self._arity:
             return TypeError(self._too_few_args_error(args, kwargs))
         return self._lookup_error(error)
+
+    # The types-first order matters: a type is itself callable, so
+    # `register(int)` would otherwise match the bare-decorator overload.
+    @overload
+    def register(self, *types: _TypeSpec) -> Callable[[Any], _Registered]: ...
+    @overload
+    def register(self, func: Any, /) -> _Registered: ...
+    @overload
+    def register(self, cls: _TypeSpec, func: Any, /) -> _Registered: ...
+    @overload
+    def register(self, *types: _TypeSpec, func: Any) -> _Registered: ...
+    def register(self, *types: Any, func: Any = None) -> Any:
+        """Register an implementation for the given types, or its annotations.
+
+        Without types, the implementation's first `arity` positional
+        parameters (past `self`/`cls`) must be annotated with types. Use
+        either bare, `@f.register`, or with explicit types,
+        `@f.register(T1, T2)`, which take precedence over annotations; or
+        functools-style, `f.register(T, func)`. A union type (`int | str`)
+        registers the implementation for each member. Also accepts a
+        `classmethod` or `staticmethod`, for a method. Raise `TypeError` at
+        once for another number of types than `arity`.
+        """
+        return _register_with(self._register, types, func, self._check_count)
+
+    def inherit(self) -> Self:
+        """Return a multimethod for a subclass, inheriting this one's.
+
+        It dispatches on `base | sub` registrations: its own replace those
+        for the same types, and the most specific of all the others wins
+        (see docs/methods.md):
+
+            class Sub(Base):
+                visit = Base.visit.inherit()
+
+                @visit.register(SomeType)
+                def _(self, x):
+                    ...
+                    return super().visit(x)
+        """
+        child = type(self)(
+            _skip=self._skip,
+            _binds_class=self._binds_class,
+            _registry=ChainTypeMap(self._registry),
+        )
+        # As `update_wrapper` would, but leaving its qualname to
+        # `__set_name__`, and not abstract: like a method, it overrides.
+        vars(child).update(
+            (key, value)
+            for key, value in vars(self).items()
+            if key not in ("__qualname__", "__isabstractmethod__")
+        )
+        return child
+
+    def __getitem__(
+        self, types: _TypeSpec | tuple[_TypeSpec, ...]
+    ) -> Callable[..., Any]:
+        """Return the implementation registered for exactly `types`.
+
+        A single type stands for a one-element tuple. For a union, the same
+        implementation must be registered for every member. Registered on
+        an `inherit()` base counts, unless replaced. Raise `KeyError` if
+        there's no such implementation.
+        """
+        types = _as_types("__getitem__()", types)
+        table = self._registry._lookup_table()
+        impls: list[Callable[..., Any] | None] = [
+            table.get(sig) for sig in _expand(types)
+        ]
+        if impls[0] is not None and all(impl is impls[0] for impl in impls):
+            return impls[0]
+        if len(types) != self._arity:
+            raise KeyError(
+                f"No implementation registered for {self._format_call(types)}: "
+                f"{self._name()} dispatches on {_count(self._arity, 'argument')}"
+            )
+        if None in impls:
+            raise KeyError(
+                f"No implementation registered for exactly {self._format_call(types)}"
+            )
+        raise KeyError(
+            f"No one implementation registered for every member of "
+            f"{self._format_call(types)}"
+        )
+
+    def __setitem__(self, types: _TypeSpec | tuple[_TypeSpec, ...], func: Any) -> None:
+        """Register `func` for `types`, a single type or a tuple of them."""
+        types = _as_types("__setitem__()", types)
+        self._register(types, func)
+
+    @property
+    def registry(self) -> Mapping[Any, Any]:
+        """Read-only mapping of the registered implementations, by signature.
+
+        Keyed by a bare type for a single argument, as in
+        `functools.singledispatch`, else by a tuple of types. Those of an
+        `inherit()` base are included, unless replaced, as calls see them.
+        """
+        table = self._registry._lookup_table()
+        return MappingProxyType(
+            {sig[0] if len(sig) == 1 else sig: f for sig, f in table.items()}
+        )
+
+    def dispatch(self, *types: _TypeSpec) -> Any:
+        """Return the implementation a call with arguments of `types` would run."""
+        types, _ = _parse_decorator_args("dispatch()", types)
+        if len(types) != self._arity:
+            raise TypeError(
+                f"dispatch() expected {_count(self._arity, 'type')}, got "
+                f"{len(types)}: {_format_types(types)}"
+            )
+        sigs = _expand(types)
+        if len(sigs) != 1:
+            raise TypeError(
+                f"dispatch() expected one class per argument, got "
+                f"{_format_types(types)}"
+            )
+        try:
+            return self._registry.lookup(sigs[0])
+        except TypeError as e:
+            error = self._lookup_error(e)
+            if error is None:
+                raise
+            raise error from None
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Call the implementation chosen by the arguments' types."""

@@ -194,6 +194,10 @@ class TypeMap(MutableMapping[_Signature, Any]):
             return table[types]
         return self._find_most_specialized(table, types)
 
+    def _copy_with(self, table: Mapping[_Signature, Any]) -> Self:
+        """Return a type map like this one, but holding `table`."""
+        return type(self)(table, arity=self._arity)
+
     def __getitem__(self, sig: _Signature) -> Any:
         """Return the value stored under exactly the key `sig`."""
         return self._table[sig]
@@ -230,10 +234,6 @@ class TypeMap(MutableMapping[_Signature, Any]):
     def __len__(self) -> int:
         """Return the number of keys stored here."""
         return len(self._table)
-
-    def _copy_with(self, table: Mapping[_Signature, Any]) -> Self:
-        """Return a type map like this one, but holding `table`."""
-        return type(self)(table, arity=self._arity)
 
     def __copy__(self) -> Self:
         """Return a type map with the same keys.
