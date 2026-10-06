@@ -6,7 +6,6 @@ from collections.abc import Iterator, Mapping, MutableMapping
 from typing import Any, Self
 
 _Signature = tuple[type, ...]
-_MISSING: Any = object()
 
 
 class NoMatchError(TypeError):
@@ -93,14 +92,17 @@ class TypeMap(MutableMapping[_Signature, Any]):
     def _find_most_specialized(
         self, table: dict[_Signature, Any], types: _Signature
     ) -> Any:
-        """Return the most specific matching key's value, or raise on ambiguity."""
+        """Return the most specific matching key's value.
+
+        Raise `NoMatchError` if no key matches, or `AmbiguousMatchError`.
+        """
         candidates = [
             (sig, value)
             for sig, value in table.items()
             if self._match_signature(sig, types)
         ]
         if not candidates:
-            return _MISSING
+            raise NoMatchError(f"No key matches types {types}")
 
         # Not a running "best so far": a later candidate can dominate two
         # earlier, mutually incomparable ones.
@@ -121,14 +123,9 @@ class TypeMap(MutableMapping[_Signature, Any]):
         if len(types) != self._arity:
             raise TypeError(f"Expected {self._arity} types, got {types}")
         table = self._lookup_table()
-        try:
+        if types in table:
             return table[types]
-        except KeyError:
-            pass
-        value = self._find_most_specialized(table, types)
-        if value is _MISSING:
-            raise NoMatchError(f"No key matches types {types}")
-        return value
+        return self._find_most_specialized(table, types)
 
     def __getitem__(self, sig: _Signature) -> Any:
         """Return the value stored under exactly the key `sig`."""
