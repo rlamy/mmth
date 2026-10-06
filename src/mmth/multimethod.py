@@ -103,6 +103,7 @@ class Multimethod:
         "_registry",
         "_skip",
         "_binds_class",
+        "_adapted",
         "__dict__",
         "__weakref__",
     )
@@ -127,6 +128,7 @@ class Multimethod:
         """
         self._skip = _skip
         self._binds_class = _binds_class
+        self._adapted: dict[Any, Any] = {}
         if func is None:
             if arity is None:
                 raise TypeError("Multimethod() needs a default function or an arity")
@@ -316,22 +318,35 @@ class Multimethod:
     def _callable(self, func: Any) -> Any:
         """Adapt `func` to be called with this multimethod's own arguments.
 
+        The registry stores the result, so calls need no adapting. Only a
+        `staticmethod` or `classmethod` needs it (see `_adapt_method`).
+        """
+        if not isinstance(func, (staticmethod, classmethod)):
+            return func
+        # Memoized so that registering the same method again stores the same
+        # callable, which `__getitem__` needs to look up a union.
+        if func not in self._adapted:
+            self._adapted[func] = self._adapt_method(func)
+        return self._adapted[func]
+
+    def _adapt_method(self, func: Any) -> Any:
+        """Adapt a `staticmethod` or `classmethod` to this multimethod's arguments.
+
         For a method, those start with `self`/`cls`: a `staticmethod` drops
         it, and a `classmethod` gets the instance's class in its place (or
-        the class itself, already, for a `classmethod` dispatchmethod). The
-        registry stores the result, so calls need no adapting.
+        the class itself, already, for a `classmethod` dispatchmethod).
         """
         if isinstance(func, staticmethod):
             static = func.__func__
             if not self._skip:
                 return static
             return lambda _self, *args, **kwargs: static(*args, **kwargs)
-        if isinstance(func, classmethod) and self._skip:
-            method = func.__func__
-            if self._binds_class:
-                return method
-            return lambda obj, *args, **kwargs: method(type(obj), *args, **kwargs)
-        return func
+        if not self._skip:
+            return func
+        method = func.__func__
+        if self._binds_class:
+            return method
+        return lambda obj, *args, **kwargs: method(type(obj), *args, **kwargs)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Call the implementation chosen by the arguments' types."""

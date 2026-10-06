@@ -92,6 +92,22 @@ def test_dispatchmethod_setitem_and_getitem():
     assert Handler().visit(Num(5)) == 5
 
 
+def test_dispatchmethod_method_registered_twice_is_one_implementation():
+    def shared(node):
+        return "shared"
+
+    class Handler:
+        @dispatchmethod
+        def visit(self, node: object):
+            return "default"
+
+    method = staticmethod(shared)
+    Handler.visit.register(int, method)
+    Handler.visit.register(str, method)
+    assert Handler.visit[int | str] is Handler.visit[int]
+    assert Handler().visit("s") == "shared"
+
+
 def test_dispatchmethod_rejects_non_callable():
     with pytest.raises(TypeError):
         dispatchmethod(42)
