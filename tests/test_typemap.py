@@ -128,6 +128,15 @@ def test_errors_show_types_by_name():
     with pytest.raises(TypeError) as exc_info:
         tm.lookup(Dog)
     assert str(exc_info.value) == "Expected 2 types, got 1: (Dog,)"
+
+    class Local:
+        class Nested:
+            pass
+
+    with pytest.raises(
+        NoMatchError, match=r"^No key matches \(Local, Local\.Nested\)$"
+    ):
+        tm.lookup((Local, Local.Nested))
     with pytest.raises(ValueError) as exc_info:
         tm[(Dog,)] = "dog"
     assert str(exc_info.value) == (

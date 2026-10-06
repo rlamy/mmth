@@ -9,10 +9,14 @@ _Signature = tuple[type, ...]
 
 
 def _type_name(t: Any) -> str:
-    """Return how error messages show type `t`: `None`, else its qualname."""
+    """Return how error messages show type `t`: `None`, else its qualname.
+
+    Leave out the enclosing functions of a class defined in one, as Python
+    does in its own messages.
+    """
     if t is type(None):
         return "None"
-    return getattr(t, "__qualname__", repr(t))
+    return getattr(t, "__qualname__", repr(t)).rpartition("<locals>.")[2]
 
 
 def _format_types(types: tuple[Any, ...]) -> str:
