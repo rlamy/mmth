@@ -604,8 +604,32 @@ def test_register_rejects_unresolvable_string_annotation():
     def g(a: "Undefined") -> str:  # noqa: F821
         return "g"
 
-    with pytest.raises(TypeError, match="can't dispatch on parameter 'a'"):
+    with pytest.raises(TypeError) as exc_info:
         f.register(g)
+    assert str(exc_info.value) == (
+        f"register() can't resolve the annotation 'Undefined' of parameter 'a' "
+        f"of {_located(g)} (name 'Undefined' is not defined); define it before "
+        f"registering, or pass the types explicitly"
+    )
+
+    def h(a: "functools.nope") -> str:
+        return "h"
+
+    with pytest.raises(TypeError, match=r"'functools\.nope' .*has no attribute 'nope'"):
+        f.register(h)
+
+
+def test_register_resolves_string_annotations_one_by_one():
+    # As under `from __future__ import annotations`.
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    @f.register
+    def _(a: "int", b: "Later" = None) -> "Later":  # noqa: F821
+        return "int"
+
+    assert f(1) == "int"
 
 
 def test_register_requires_parameters_to_dispatch_on():
@@ -889,3 +913,22 @@ def test_unresolved_annotations_off_dispatch_are_ignored():
         return "int"
 
     assert f(1) == "int"
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="lazy annotations")
+def test_register_rejects_unresolved_lazy_annotation():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    def g(a: Later) -> str:  # noqa: F821
+        return "g"
+
+    with pytest.raises(TypeError, match="can't resolve the annotation 'Later' of"):
+        f.register(g)
+
+    class Later:
+        pass
+
+    f.register(g)
+    assert f(Later()) == "g"

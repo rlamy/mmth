@@ -43,10 +43,12 @@ def function_name_impl(arg1: Type1, arg2: Type2, ...) -> ReturnType:
 ```
 
 Explicit types take precedence over annotations. Without them, every
-parameter must have a type annotation: a missing one raises `TypeError`. String annotations
-(e.g. under `from __future__ import annotations`) are evaluated, as
-`functools.singledispatch` does; one that can't be resolved yet (a forward
-reference) raises `TypeError` too - pass the types explicitly in that case.
+dispatched parameter must have a type annotation: a missing one raises
+`TypeError`. String annotations (e.g. under `from __future__ import
+annotations`) are evaluated, as `functools.singledispatch` does; one on a
+dispatched parameter that can't be resolved yet (a forward reference) raises
+`TypeError` too - pass the types explicitly in that case. Unresolved
+annotations elsewhere, on the return or other parameters, are ignored.
 
 Also as with `functools.singledispatch`:
 
