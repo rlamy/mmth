@@ -67,9 +67,9 @@ Evaluator().visit(Add(Num(1), Num(2)))  # 3
 
 ## Class and Static Methods
 
-As with `functools.singledispatchmethod`, a registered implementation can be
-a `classmethod` or `staticmethod` (applied *below* `.register()`), as can
-the `dispatchmethod` itself (applied below `@dispatchmethod`):
+A registered implementation can be a `classmethod` or `staticmethod`
+(applied *below* `.register()`), as can the `dispatchmethod` itself
+(applied below `@dispatchmethod`):
 
 ```python
 from mmth import dispatchmethod
@@ -98,7 +98,7 @@ A `classmethod`/`staticmethod` *implementation* of an ordinary
 `dispatchmethod` can only be called through an instance, though: looked up
 on the class, an ordinary `dispatchmethod` takes the instance as its first
 argument (`Formatter.render(formatter, value)`) rather than dispatching on
-it as `functools.singledispatchmethod` would.
+it.
 
 ## Overriding One Implementation in a Subclass
 

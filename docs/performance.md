@@ -13,17 +13,17 @@ size or `inherit()` chain depth; see `tests/test_benchmarks.py`.
 
 Registering an ABC is the one case where the cache can go stale without a
 `register()` call: `SomeABC.register(cls)` changes what `issubclass`
-answers. As in `functools.singledispatch`, a multimethod with an ABC in its
-registry (or its `inherit()` parent's) records `abc.get_cache_token()` and
-clears its cache whenever the token has changed since.
+answers. So a multimethod with an ABC in its registry (or its `inherit()`
+parent's) records `abc.get_cache_token()` and clears its cache whenever the
+token has changed since.
 
 The cache holds the argument classes it has seen by strong reference, so a
 class a multimethod has been called with stays alive until that
 multimethod's registry (or its `inherit()` parent's) next changes, or the
-multimethod itself goes. `functools.singledispatch` holds them weakly
-instead, but a weak reference costs a call on every lookup: about 10% of a
-cached call, enough to lose its lead over `singledispatch`. That matters
-only for programs that create classes dynamically and dispatch on them.
+multimethod itself goes. Holding them weakly would avoid that, but a weak
+reference costs a call on every lookup: about 10% of a cached call. That
+matters only for programs that create classes dynamically and dispatch on
+them.
 
 Once resolution itself was cached, building the cache key became the
 dominant remaining cost: a generator expression to compute `arg_types` from
@@ -32,9 +32,7 @@ more than the single `__class__` lookup the overwhelmingly common one-dispatched
 argument case actually needs - true of essentially every `dispatchmethod`
 call (`self` is skipped) and most `dispatch` functions. `__call__`
 fast-paths that case, halving the cost of a call on CPython (and more on
-PyPy): a cached one-argument call is then a little faster than
-`functools.singledispatch` on every supported CPython version, and several
-times faster on PyPy.
+PyPy).
 
 `Multimethod` and `TypeMap` keep every attribute a call touches in
 `__slots__`.

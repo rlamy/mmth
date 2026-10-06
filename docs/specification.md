@@ -13,8 +13,7 @@ def function_name(arg1, arg2, ...) -> ReturnType:
 
 The decorated function is the **default implementation**, registered for
 `object` at every required positional parameter, so it's called whenever no
-more specific signature matches. As with `functools.singledispatch`, its
-annotations are ignored. Their number is the multimethod's **arity**: a call
+more specific signature matches. Its annotations are ignored. Their number is the multimethod's **arity**: a call
 dispatches on its first `arity` positional arguments, and passes any others,
 like optional parameters, on to the implementation without dispatching on
 them.
@@ -46,12 +45,12 @@ def function_name_impl(arg1: Type1, arg2: Type2, ...) -> ReturnType:
 Explicit types take precedence over annotations. Without them, every
 dispatched parameter must have a type annotation: a missing one raises
 `TypeError`. String annotations (e.g. under `from __future__ import
-annotations`) are evaluated, as `functools.singledispatch` does; one on a
+annotations`) are evaluated; one on a
 dispatched parameter that can't be resolved yet (a forward reference) raises
 `TypeError` too - pass the types explicitly in that case. Unresolved
 annotations elsewhere, on the return or other parameters, are ignored.
 
-Also as with `functools.singledispatch`:
+Also:
 
 - A **union** (`int | str`, `Union[int, str]`, `Optional[int]`), as an
   explicit type or an annotation, registers the implementation for each
@@ -92,8 +91,7 @@ impl = function_name[Type1, Type2]  # Returns registered callable or raises KeyE
 When `function_name(arg1, arg2, ...)` is called:
 
 1. **Collect runtime types**: `(arg1.__class__, arg2.__class__, ...)` -
-   `__class__` rather than `type()`, as `functools.singledispatch` does, so
-   that proxies (e.g. `Mock(spec=SomeClass)`) dispatch as the class they
+   `__class__` rather than `type()`, so that proxies (e.g. `Mock(spec=SomeClass)`) dispatch as the class they
    stand in for
 
 2. **Exact match**: If `(Type1, Type2, ...)` exists in registry, call that implementation
@@ -154,8 +152,6 @@ explicit type or a registered implementation's annotation. For `func[...]` with 
 implementation must be registered for every member.
 
 ### Introspection
-
-As with `functools.singledispatch`:
 
 - `func.dispatch(Type1, Type2, ...)` returns the implementation a call with
   arguments of those types would run, without calling it.

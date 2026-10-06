@@ -388,7 +388,7 @@ class Multimethod:
             f"{self._name()} dispatches on {_count(self._arity, 'argument')}, "
             f"not {len(types)}"
         )
-        # As `functools.singledispatch` would read `register(int, SomeClass)`.
+        # A class there may well be meant as the implementation.
         last = types[-1] if types else None
         if (
             func is None
@@ -563,7 +563,7 @@ class Multimethod:
         parameters (past `self`/`cls`) must be annotated with types. Use
         either bare, `@f.register`, or with explicit types,
         `@f.register(T1, T2)`, which take precedence over annotations; or
-        functools-style, `f.register(T, func)`. A union type (`int | str`)
+        directly, `f.register(T, func)`. A union type (`int | str`)
         registers the implementation for each member. Also accepts a
         `classmethod` or `staticmethod`, for a method. Raise `TypeError` at
         once for another number of types than `arity`.
@@ -639,9 +639,9 @@ class Multimethod:
     def registry(self) -> Mapping[Any, Any]:
         """Read-only mapping of the registered implementations, by signature.
 
-        Keyed by a bare type for a single argument, as in
-        `functools.singledispatch`, else by a tuple of types. Those of an
-        `inherit()` base are included, unless replaced, as calls see them.
+        Keyed by a bare type for a single argument, else by a tuple of
+        types. Those of an `inherit()` base are included, unless replaced, as
+        calls see them.
         """
         table = self._registry._lookup_table()
         return MappingProxyType(
@@ -818,7 +818,7 @@ def dispatch(func: Any = None, *, arity: int | None = None) -> Any:
 
     The default implementation is registered for `object` at every required
     positional parameter, so it's called whenever no more specific signature
-    matches: as with `functools.singledispatch`, its annotations are ignored.
+    matches, whatever its annotations.
     Calls dispatch on that many positional arguments, and pass any others on.
 
     Pass `arity` to dispatch on another number of arguments, either directly,
@@ -843,9 +843,9 @@ def dispatchmethod(func: Any = None, *, arity: int | None = None) -> Any:
     `self` is bound automatically via the descriptor protocol and excluded
     from dispatch, so `.register(*types)` only lists the types of the
     remaining arguments, and `arity` doesn't count it either (pass it as with
-    `dispatch`). As with `functools.singledispatchmethod`, either the method
-    itself or any registered implementation can also be a `classmethod` or
-    `staticmethod` (applied *below* the decorator).
+    `dispatch`). Either the method itself or any registered implementation
+    can also be a `classmethod` or `staticmethod` (applied *below* the
+    decorator).
 
     A subclass can replace a single implementation for itself, without
     touching the base class, via `inherit()` (see `inherit` and
