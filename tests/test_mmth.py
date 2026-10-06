@@ -824,6 +824,11 @@ def test_parameterized_generics_are_rejected():
             f.register(annotation)(g)
     with pytest.raises(TypeError, match=r"got list\[int\] \(.*; use list\)$"):
         f.register(list[int])
+    for annotation in (Optional[list[int]], Annotated[list[int], "meta"]):
+        with pytest.raises(TypeError, match=r"; use list\)$"):
+            f.register(annotation)
+    with pytest.raises(TypeError, match=r"expected types, got [^(]*$"):
+        f.register(Literal[1] | None)
     with pytest.raises(TypeError, match=r"; use list\); pass the types explicitly$"):
         f.register(g)
 

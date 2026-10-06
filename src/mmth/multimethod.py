@@ -114,6 +114,10 @@ def _describe(func: Any) -> str:
 def _not_a_type_hint(t: Any) -> str:
     """Return a hint at what to dispatch on instead of `t`, if any."""
     origin = get_origin(t)
+    # Before checking for a class, as `Union` is one since Python 3.14.
+    if origin in (Union, UnionType, Annotated):
+        members = get_args(t)[:1] if origin is Annotated else get_args(t)
+        return next(filter(None, map(_not_a_type_hint, members)), "")
     if isinstance(origin, type):
         return (
             f" (isinstance can't check a parameterized generic's parameters; "
