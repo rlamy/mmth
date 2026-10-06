@@ -647,6 +647,29 @@ def test_register_rejects_unresolvable_string_annotation():
         f.register(h)
 
 
+def test_register_resolves_forward_references_in_unions():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    @f.register
+    def _(a: Optional["int"], b: "Undefined" = None) -> str:  # noqa: F821
+        return "optional int"
+
+    assert f(None) == "optional int"
+
+    def g(a: Optional["Undefined"]) -> str:  # noqa: F821
+        return "g"
+
+    with pytest.raises(TypeError) as exc_info:
+        f.register(g)
+    assert str(exc_info.value) == (
+        f"register() can't resolve the annotation of parameter 'a' of "
+        f"{_located(g)} (name 'Undefined' is not defined); define it before "
+        f"registering, or pass the types explicitly"
+    )
+
+
 def test_register_resolves_string_annotations_one_by_one():
     # As under `from __future__ import annotations`.
     @dispatch
@@ -961,11 +984,17 @@ def test_register_rejects_unresolved_lazy_annotation():
     def g(a: Later) -> str:  # noqa: F821
         return "g"
 
-    with pytest.raises(TypeError, match="can't resolve the annotation 'Later' of"):
-        f.register(g)
+    def h(a: Optional[Later]) -> str:  # noqa: F821
+        return "h"
+
+    for func in [g, h]:
+        with pytest.raises(TypeError, match="name 'Later' is not defined"):
+            f.register(func)
 
     class Later:
         pass
 
     f.register(g)
     assert f(Later()) == "g"
+    f.register(h)
+    assert f(None) == "h"

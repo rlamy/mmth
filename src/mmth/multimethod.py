@@ -5,12 +5,11 @@ import inspect
 import itertools
 import sys
 from collections.abc import Mapping
-from types import MappingProxyType, MethodType, NoneType, UnionType
+from types import MappingProxyType, MethodType, NoneType, SimpleNamespace, UnionType
 from typing import (
     Annotated,
     Any,
     Callable,
-    ForwardRef,
     Self,
     TypeVar,
     Union,
@@ -82,17 +81,25 @@ def _classes(t: Any) -> tuple[type, ...] | None:
 _UNRESOLVED = (NameError, AttributeError, SyntaxError)
 
 
-def _evaluate(annotation: Any, func: Any) -> Any:
-    """Evaluate `func`'s string or forward reference `annotation`.
+def _resolve(func: Any, name: str, annotation: Any) -> Any:
+    """Evaluate the annotation of `func`'s parameter `name`.
 
-    In `func`'s globals, as `get_type_hints` does, or its closure too, for a
-    lazy annotation since Python 3.14.
+    As `get_type_hints(func)` does, forward references in it included, but
+    for this annotation alone, so that others that don't resolve don't
+    matter. Raise `TypeError` if it doesn't resolve.
     """
-    if isinstance(annotation, str):
-        return eval(annotation, getattr(func, "__globals__", {}))
-    if sys.version_info >= (3, 14) and isinstance(annotation, ForwardRef):
-        return annotation.evaluate()
-    return annotation
+    holder = SimpleNamespace(__annotations__={name: annotation})
+    try:
+        return get_type_hints(holder, globalns=getattr(func, "__globals__", None))[name]
+    except _UNRESOLVED as e:
+        # Shown when it's all a forward reference, not just part of it.
+        source = getattr(annotation, "__forward_arg__", annotation)
+        shown = f" {source!r}" if isinstance(source, str) else ""
+        raise TypeError(
+            f"register() can't resolve the annotation{shown} of parameter "
+            f"{name!r} of {_describe(func)} ({e}); define it before "
+            f"registering, or pass the types explicitly"
+        ) from None
 
 
 def _describe(func: Any) -> str:
@@ -313,15 +320,8 @@ class Multimethod:
                     f"{p.name!r} of {_describe(func)}; annotate it or pass "
                     f"the types explicitly"
                 )
-            try:
-                annotation = _evaluate(annotation, func)
-            except _UNRESOLVED as e:
-                source = getattr(annotation, "__forward_arg__", annotation)
-                raise TypeError(
-                    f"register() can't resolve the annotation {source!r} of "
-                    f"parameter {p.name!r} of {_describe(func)} ({e}); define "
-                    f"it before registering, or pass the types explicitly"
-                ) from None
+            if p.name not in hints:
+                annotation = _resolve(func, p.name, annotation)
             if _classes(annotation) is None:
                 raise TypeError(
                     f"register() can't dispatch on parameter {p.name!r} of "
