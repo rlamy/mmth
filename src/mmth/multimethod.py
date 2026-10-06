@@ -122,8 +122,8 @@ class Multimethod:
         for `object` at each of them, whatever its annotations. Pass `arity`
         only for a multimethod without a default (where it's required), or
         to override `func`'s, e.g. for `*args`. A call matching no
-        registration raises `NoMatchError`. The underscored arguments are internal, set by
-        `dispatchmethod` and `inherit()`.
+        registration raises `NoMatchError`. The underscored arguments are
+        internal, set by `dispatchmethod` and `inherit()`.
         """
         self._skip = _skip
         self._binds_class = _binds_class
@@ -218,7 +218,8 @@ class Multimethod:
         either bare, `@f.register`, or with explicit types,
         `@f.register(T1, T2)`, which take precedence over annotations; or
         functools-style, `f.register(T, func)`. A union type (`int | str`)
-        registers the implementation for each member. Also accepts a `classmethod` or `staticmethod`, for a method.
+        registers the implementation for each member. Also accepts a
+        `classmethod` or `staticmethod`, for a method.
         """
         types, func = _parse_decorator_args("register()", types, func)
 
@@ -277,9 +278,7 @@ class Multimethod:
             return impls[0]
         raise KeyError(f"No implementation registered for {types}")
 
-    def __setitem__(
-        self, types: _TypeSpec | tuple[_TypeSpec, ...], func: Any
-    ) -> None:
+    def __setitem__(self, types: _TypeSpec | tuple[_TypeSpec, ...], func: Any) -> None:
         """Register `func` for `types`, a single type or a tuple of them."""
         types = self._as_types("__setitem__()", types)
         self._register(types, func)
@@ -302,7 +301,9 @@ class Multimethod:
         if len(sigs) != 1:
             raise TypeError(f"dispatch() expected one class per argument, got {types}")
         arg_types = sigs[0]
-        key: type | tuple[type, ...] = arg_types[0] if len(arg_types) == 1 else arg_types
+        key: type | tuple[type, ...] = (
+            arg_types[0] if len(arg_types) == 1 else arg_types
+        )
         return self._registry.lookup(key)
 
     def _callable(self, func: Any) -> Any:
@@ -334,7 +335,7 @@ class Multimethod:
         if len(args) - self._skip == 1:
             key = args[self._skip].__class__
         else:
-            key = tuple(arg.__class__ for arg in args[self._skip:])
+            key = tuple(arg.__class__ for arg in args[self._skip :])
         return self._registry.lookup(key)(*args, **kwargs)
 
     def __get__(self, instance: object | None, owner: type | None = None) -> Any:
@@ -344,7 +345,6 @@ class Multimethod:
         if instance is None or self._skip == 0:
             return self
         return MethodType(self, instance)
-
 
 
 class _PendingInherit:
