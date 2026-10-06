@@ -1,3 +1,4 @@
+import inspect
 import pickle
 
 import pytest
@@ -358,6 +359,24 @@ def test_inherit_shows_the_registrations_it_dispatches_on():
         Add: sub_add,
     }
     assert set(Base.visit.registry) == {object, Num, Add}
+
+
+def test_inherit_keeps_the_base_default_metadata():
+    class Base:
+        @dispatchmethod
+        def visit(self, node):
+            """Visit a node."""
+            return "default"
+
+    class Sub(Base):
+        visit = inherit()
+
+    assert Sub.visit.__doc__ == "Visit a node."
+    assert Sub.visit.__wrapped__ is Base.visit.__wrapped__
+    assert inspect.signature(Sub.visit) == inspect.signature(Base.visit)
+    assert Sub.visit.__qualname__.endswith("Sub.visit")
+    with pytest.raises(TypeError, match="; pass 'node' positionally"):
+        Sub().visit(node=Num(1))
 
 
 def test_inherit_function_register_rejects_non_function_at_once():

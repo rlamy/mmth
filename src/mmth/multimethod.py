@@ -455,9 +455,13 @@ class Multimethod:
             _binds_class=self._binds_class,
             _registry=ChainTypeMap(self._registry),
         )
-        # Until `__set_name__` gives it a qualname, if ever.
-        if hasattr(self, "__name__"):
-            child.__name__ = self.__name__
+        # As `update_wrapper` would, but leaving its qualname to
+        # `__set_name__`, and not abstract: like a method, it overrides.
+        vars(child).update(
+            (key, value)
+            for key, value in vars(self).items()
+            if key not in ("__qualname__", "__isabstractmethod__")
+        )
         return child
 
     def __getitem__(
