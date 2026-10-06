@@ -161,19 +161,16 @@ class TypeMap(MutableMapping[_Signature, Any]):
         """Return the number of keys stored here."""
         return len(self._table)
 
-    def _empty_copy(self) -> Self:
-        return type(self)(arity=self._arity)
+    def _copy_with(self, table: Mapping[_Signature, Any]) -> Self:
+        """Return a type map like this one, but holding `table`."""
+        return type(self)(table, arity=self._arity)
 
     def __copy__(self) -> Self:
         """Return a type map with the same keys.
 
         The copy is independent: changing either one leaves the other as is.
         """
-        new = self._empty_copy()
-        new._table = self._table.copy()
-        if self._abc_token is not None:
-            new._abc_token = get_cache_token()
-        return new
+        return self._copy_with(self._table)
 
     @property
     def arity(self) -> int:
@@ -235,5 +232,5 @@ class ChainTypeMap(TypeMap):
     def _lookup_table(self) -> dict[_Signature, Any]:
         return self._parent._lookup_table() | self._table
 
-    def _empty_copy(self) -> Self:
-        return type(self)(self._parent)
+    def _copy_with(self, table: Mapping[_Signature, Any]) -> Self:
+        return type(self)(self._parent, table)
