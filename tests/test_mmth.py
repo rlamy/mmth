@@ -495,6 +495,18 @@ def test_register_evaluates_string_annotations():
     assert f(1) == "g"
 
 
+def test_register_reads_a_partials_annotations():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    def g(a: int, suffix: str) -> str:
+        return f"int{suffix}"
+
+    f.register(functools.partial(g, suffix="!"))
+    assert f(1) == "int!"
+
+
 def test_register_rejects_unresolvable_string_annotation():
     @dispatch
     def f(a: object) -> str:

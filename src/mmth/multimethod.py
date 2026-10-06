@@ -240,7 +240,10 @@ class Multimethod:
             )
         try:
             hints = get_type_hints(func)
-        except NameError:  # a forward reference that doesn't resolve yet
+        # A forward reference that doesn't resolve yet, or a callable that
+        # isn't a function, like a `functools.partial`, whose signature still
+        # has annotations.
+        except (NameError, TypeError):
             hints = {}
         types = []
         for p in params[: self._arity]:
