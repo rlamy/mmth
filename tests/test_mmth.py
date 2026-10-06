@@ -60,8 +60,29 @@ def test_no_match_raises_no_match_error():
     d = Multimethod(arity=1)
     d.register(int)(lambda a: a * 2)
     assert d(5) == 10
-    with pytest.raises(NoMatchError, match="No key matches"):
+    with pytest.raises(NoMatchError) as exc_info:
         d("not an int")
+    assert str(exc_info.value) == (
+        "Multimethod(str) matches no implementation; registered: Multimethod(int)"
+    )
+    assert exc_info.value.types == (str,)
+    assert exc_info.value.__suppress_context__
+
+
+def test_no_match_error_lists_some_registered_signatures():
+    f = Multimethod(arity=2)
+    with pytest.raises(NoMatchError, match="none are registered$"):
+        f(1, "a")
+    for cls in [int, float, bytes, list, dict, set]:
+        f[cls, cls] = lambda a, b: "same"
+    with pytest.raises(NoMatchError) as exc_info:
+        f(1, "a")
+    assert str(exc_info.value) == (
+        "Multimethod(int, str) matches no implementation; registered: "
+        "Multimethod(int, int), Multimethod(float, float), "
+        "Multimethod(bytes, bytes), Multimethod(list, list), "
+        "Multimethod(dict, dict), and 1 more"
+    )
 
 
 def test_getitem_getter():

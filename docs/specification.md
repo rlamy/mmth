@@ -293,7 +293,9 @@ bar = Multimethod(arity=1)
 def _(a: int) -> int:
     return a * 2
 
-bar("str")  # NoMatchError: No key matches (str,)
+bar("str")
+# NoMatchError: Multimethod(str) matches no implementation; registered:
+# Multimethod(int)
 ```
 
 ## Design Decisions

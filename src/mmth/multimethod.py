@@ -19,13 +19,15 @@ from typing import (
     overload,
 )
 
-from mmth.typemap import ChainTypeMap, TypeMap, _count
+from mmth.typemap import ChainTypeMap, NoMatchError, TypeMap, _count, _type_name
 
 # Not the implementation's own type: implementations are all named `_`, so
 # type checkers would treat a subclass's `_` as overriding its base's.
 _Registered = Any
 # `_SpecialForm` is how mypy types `Optional[X]`, `Union[...]`, `Any` etc.
 _TypeSpec = type | UnionType | TypeVar | _SpecialForm | None
+# How many registered signatures a `NoMatchError` lists.
+_MAX_LISTED = 5
 
 
 def _classes(t: Any) -> tuple[type, ...] | None:
@@ -406,6 +408,21 @@ class Multimethod:
         """Return how error messages name this multimethod."""
         return getattr(self, "__qualname__", type(self).__name__)
 
+    def _format_call(self, types: tuple[Any, ...]) -> str:
+        """Return how error messages show a call with arguments of `types`."""
+        return f"{self._name()}({', '.join(_type_name(t) for t in types)})"
+
+    def _no_match_error(self, types: tuple[type, ...]) -> str:
+        """Describe a call matching no registered signature."""
+        message = f"{self._format_call(types)} matches no implementation"
+        sigs = list(self._registry._lookup_table())
+        if not sigs:
+            return f"{message}: none are registered"
+        listed = ", ".join(self._format_call(sig) for sig in sigs[:_MAX_LISTED])
+        if len(sigs) > _MAX_LISTED:
+            listed += f", and {len(sigs) - _MAX_LISTED} more"
+        return f"{message}; registered: {listed}"
+
     def _too_few_args_error(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
         """Describe a call with too few positional arguments to dispatch on."""
         after_self = " after self" if self._skip else ""
@@ -436,6 +453,8 @@ class Multimethod:
         """
         if len(args) - self._skip < self._arity:
             return TypeError(self._too_few_args_error(args, kwargs))
+        if isinstance(error, NoMatchError):
+            return NoMatchError(self._no_match_error(error.types), error.types)
         return None
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
