@@ -475,8 +475,18 @@ def test_register_rejects_another_arity_than_the_default():
     def f(a, b) -> str:
         return "default"
 
-    with pytest.raises(ValueError, match="has 1 type,"):
-        f.register(int)(lambda a: "int")
+    def _(a) -> str:
+        return "int"
+
+    with pytest.raises(TypeError) as exc_info:
+        f.register(int)(_)
+    assert str(exc_info.value) == (
+        f"can't register {_located(_)} for f(int): {f.__qualname__} dispatches "
+        f"on 2 arguments, not 1"
+    )
+    with pytest.raises(TypeError, match=r"for f\(int, int, int\): .* not 3$"):
+        f[int, int, int] = lambda a, b, c: "int, int, int"
+    assert list(f.registry) == [(object, object)]
     with pytest.raises(
         TypeError, match=r"f\(\) takes 2 positional arguments to dispatch on, got 1$"
     ) as exc_info:
@@ -853,3 +863,13 @@ def test_lookup_passes_on_errors_of_its_own():
     with pytest.raises(TypeError) as exc_info:
         f(1)
     assert exc_info.value is error
+
+
+def test_arity_zero_dispatches_on_nothing():
+    @dispatch
+    def f() -> str:
+        return "default"
+
+    assert f() == "default"
+    with pytest.raises(TypeError, match="dispatches on 0 arguments, not 1$"):
+        f.register(int)(lambda: "int")

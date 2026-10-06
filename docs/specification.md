@@ -117,7 +117,7 @@ When `function_name(arg1, arg2, ...)` is called:
 - **One arity**: every signature has the multimethod's arity, as many types
   as the default has required positional parameters (or
   `Multimethod(arity=n)`, required without a default); registering another
-  length raises `ValueError`, and a call with fewer positional arguments
+  length raises `TypeError`, and a call with fewer positional arguments
   raises `TypeError` (not `NoMatchError`). Registering by annotations reads
   those of the implementation's first `arity` positional parameters
 - **ABCs**: matching uses `issubclass`, so abstract base classes match their

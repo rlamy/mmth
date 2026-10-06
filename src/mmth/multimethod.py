@@ -275,6 +275,12 @@ class Multimethod:
         return tuple(types)
 
     def _register(self, types: tuple[Any, ...], func: Any) -> None:
+        if types and len(types) != self._arity:
+            raise TypeError(
+                f"can't register {_describe(func)} for "
+                f"{self._format_call(types, short=True)}: {self._name()} "
+                f"dispatches on {_count(self._arity, 'argument')}, not {len(types)}"
+            )
         impl = self._callable(func)
         for sig in _expand(types or self._param_types(func)):
             self._registry[sig] = impl
