@@ -347,6 +347,20 @@ def test_dispatchmethod_takes_only_a_function():
         dispatchmethod(Node)
 
 
+def test_dispatchmethod_called_bare_is_dispatchmethod():
+    class Handler:
+        @dispatchmethod()
+        def visit(self, node, extra=None):
+            return "default"
+
+        @visit.register(Num)
+        def _(self, node, extra=None):
+            return node.value
+
+    assert Handler().visit(Num(3)) == 3
+    assert Handler().visit(Node()) == "default"
+
+
 def test_inherit_register_accepts_types_outside_the_base_default():
     class Handler:
         @dispatchmethod

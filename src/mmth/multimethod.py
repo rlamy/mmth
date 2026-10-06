@@ -671,7 +671,9 @@ def inherit() -> Multimethod:
 @overload
 def dispatch(func: Callable[..., Any], *, arity: int | None = None) -> Multimethod: ...
 @overload
-def dispatch(*, arity: int) -> Callable[[Callable[..., Any]], Multimethod]: ...
+def dispatch(
+    *, arity: int | None = None
+) -> Callable[[Callable[..., Any]], Multimethod]: ...
 def dispatch(func: Any = None, *, arity: int | None = None) -> Any:
     """Turn a function into a multimethod, with it as the default.
 
@@ -683,8 +685,9 @@ def dispatch(func: Any = None, *, arity: int | None = None) -> Any:
     Pass `arity` to dispatch on another number of arguments, either directly,
     `dispatch(func, arity=n)`, or as `@dispatch(arity=n)`. It's required if
     the default takes `*args` or has no signature to read, rather than guess.
+    `@dispatch()` is the same as `@dispatch`.
     """
-    if func is None and arity is not None:
+    if func is None:
         return lambda func: dispatch(func, arity=arity)
     if not _is_function(func):
         raise TypeError(f"dispatch() expected a function, got {func!r}")
@@ -694,7 +697,7 @@ def dispatch(func: Any = None, *, arity: int | None = None) -> Any:
 @overload
 def dispatchmethod(func: Any, *, arity: int | None = None) -> Multimethod: ...
 @overload
-def dispatchmethod(*, arity: int) -> Callable[[Any], Multimethod]: ...
+def dispatchmethod(*, arity: int | None = None) -> Callable[[Any], Multimethod]: ...
 def dispatchmethod(func: Any = None, *, arity: int | None = None) -> Any:
     """Turn a method into a multimethod, as `dispatch` does a function.
 
@@ -724,7 +727,7 @@ def dispatchmethod(func: Any = None, *, arity: int | None = None) -> Any:
             return self.visit(node.left) + self.visit(node.right)
     ```
     """
-    if func is None and arity is not None:
+    if func is None:
         return lambda func: dispatchmethod(func, arity=arity)
     if not _is_function(func):
         raise TypeError(f"dispatchmethod() expected a function, got {func!r}")

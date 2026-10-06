@@ -26,7 +26,7 @@ another number of arguments, as `@dispatch(arity=2)` or
 `dispatch(max, arity=2)` (not counting `self` for a method). It's required
 for a default that takes `*args`, or that has no signature to read (whether
 builtins like `max` do depends on the Python implementation): rather than
-guess, they raise `TypeError`.
+guess, they raise `TypeError`. Without it, `@dispatch()` is just `@dispatch`.
 
 ### 2. Register an Implementation (Main Syntax)
 

@@ -500,8 +500,16 @@ def test_dispatch_takes_only_a_function():
         dispatch(42)
     with pytest.raises(TypeError, match=r"dispatch\(\) expected a function"):
         dispatch(int)
-    with pytest.raises(TypeError):
-        dispatch()  # type: ignore[call-arg]
+
+
+def test_dispatch_called_bare_is_dispatch():
+    @dispatch()
+    def f(a, b=None) -> str:
+        return "default"
+
+    f.register(int)(lambda a, b=None: "int")
+    assert f(1) == "int"
+    assert f("a", 2) == "default"
 
 
 def test_register_bare_uses_annotations():
