@@ -1,4 +1,5 @@
 import copy
+import pickle
 from abc import ABC
 
 import pytest
@@ -86,6 +87,31 @@ def test_lookup_raises_on_ambiguity():
     tm = TypeMap({(Dog,): "dog", (Pet,): "pet"})
     with pytest.raises(AmbiguousMatchError, match="Ambiguous lookup"):
         tm.lookup(PetDog)
+
+
+def test_lookup_errors_hold_the_types_and_candidates():
+    parent = TypeMap({(Dog,): "dog", (Animal,): "animal"})
+    child = ChainTypeMap(parent, {(Pet,): "pet"})
+    with pytest.raises(AmbiguousMatchError) as exc_info:
+        child.lookup(PetDog)
+    error = exc_info.value
+    assert error.types == (PetDog,)
+    assert set(error.candidates) == {((Dog,), "dog"), ((Pet,), "pet")}
+    with pytest.raises(NoMatchError) as exc_info:
+        child.lookup(int)
+    assert exc_info.value.types == (int,)
+
+
+def test_lookup_errors_pickle():
+    no_match = NoMatchError("no match", (Dog,))
+    no_match.add_note("note")
+    ambiguous = AmbiguousMatchError("ambiguous", (PetDog,), (((Dog,), "dog"),))
+    for error in [no_match, ambiguous]:
+        copied = pickle.loads(pickle.dumps(error))
+        assert type(copied) is type(error)
+        assert str(copied) == str(error)
+        assert vars(copied) == vars(error)
+    assert pickle.loads(pickle.dumps(no_match)).__notes__ == ["note"]
 
 
 def test_errors_show_types_by_name():

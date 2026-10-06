@@ -27,11 +27,45 @@ def _count(n: int, noun: str) -> str:
 
 
 class NoMatchError(TypeError):
-    """Raised by `TypeMap.lookup()` when no key matches."""
+    """Raised by `TypeMap.lookup()` when no key matches.
+
+    Attributes:
+        types: The tuple of types looked up.
+    """
+
+    def __init__(self, message: str, types: _Signature = ()) -> None:
+        """Create the error, for a lookup of `types`."""
+        super().__init__(message)
+        self.types = types
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        """Pickle the attributes along with the message."""
+        return type(self), (str(self), self.types), self.__dict__
 
 
 class AmbiguousMatchError(TypeError):
-    """Raised by `TypeMap.lookup()` when no matching key is the most specific."""
+    """Raised by `TypeMap.lookup()` when no matching key is the most specific.
+
+    Attributes:
+        types: The tuple of types looked up.
+        candidates: The matching `(key, value)` pairs, none more specific
+            than the others.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        types: _Signature = (),
+        candidates: tuple[tuple[_Signature, Any], ...] = (),
+    ) -> None:
+        """Create the error, for a lookup of `types` matching `candidates`."""
+        super().__init__(message)
+        self.types = types
+        self.candidates = candidates
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        """Pickle the attributes along with the message."""
+        return type(self), (str(self), self.types, self.candidates), self.__dict__
 
 
 class TypeMap(MutableMapping[_Signature, Any]):
@@ -117,7 +151,7 @@ class TypeMap(MutableMapping[_Signature, Any]):
             if self._match_signature(sig, types)
         ]
         if not candidates:
-            raise NoMatchError(f"No key matches {_format_types(types)}")
+            raise NoMatchError(f"No key matches {_format_types(types)}", types)
 
         # Not a running "best so far": a later candidate can dominate two
         # earlier, mutually incomparable ones.
@@ -132,7 +166,9 @@ class TypeMap(MutableMapping[_Signature, Any]):
             keys = ", ".join(_format_types(sig) for sig, _ in maximal)
             raise AmbiguousMatchError(
                 f"Ambiguous lookup for {_format_types(types)}: matches {keys}, "
-                f"none more specific than the others"
+                f"none more specific than the others",
+                types,
+                tuple(maximal),
             )
         return maximal[0][1]
 
