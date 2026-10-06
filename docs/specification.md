@@ -106,8 +106,9 @@ When `function_name(arg1, arg2, ...)` is called:
    - If A beats B but not vice versa → A wins
    - Exact match beats inheritance match
 
-5. **No match**: if no registered signature matches, including the
-   default's `(object, ...)` → raise `NoMatchError`
+5. **No match**: if no registered signature matches → raise `NoMatchError`.
+   The default's `(object, ...)` matches any call, so this only happens
+   without one, as for `Multimethod(arity=n)`
 
 ### Registration Methods
 
@@ -327,6 +328,10 @@ bar("str")
 ## Design Decisions
 
 1. **Return type annotations**: Not used in dispatch matching
-2. **Variadic arguments**: Not supported
-3. **Keyword arguments**: Not used in dispatch (treated as fallback)
+2. **Variadic arguments**: Never dispatched on. Positional arguments past
+   the arity are passed on to the implementation, so a default can take
+   `*args`, given an explicit `arity`
+3. **Keyword arguments**: Never dispatched on, only passed on to the
+   implementation; a call passing a dispatched argument by keyword has too
+   few positional arguments, and raises `TypeError`
 4. **Callable references**: Registration requires explicit callable object, not name matching
