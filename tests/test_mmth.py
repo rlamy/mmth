@@ -335,7 +335,9 @@ def test_calls_dispatch_on_the_required_positional_params():
     assert f(1, 2) == "int, int unset"
     assert f(1, 2, "c") == "int, int c"
     assert f("a", 2, c="c") == "default c"
-    with pytest.raises(TypeError, match="Expected 2 types") as exc_info:
+    with pytest.raises(
+        TypeError, match=r"f\(\) takes 2 positional arguments to dispatch on, got 1$"
+    ) as exc_info:
         f(1)
     assert exc_info.type is TypeError
 
@@ -401,7 +403,9 @@ def test_register_rejects_another_arity_than_the_default():
 
     with pytest.raises(ValueError, match="has 1 type,"):
         f.register(int)(lambda a: "int")
-    with pytest.raises(TypeError, match="Expected 2 types") as exc_info:
+    with pytest.raises(
+        TypeError, match=r"f\(\) takes 2 positional arguments to dispatch on, got 1$"
+    ) as exc_info:
         f(1)
     assert exc_info.type is TypeError
 
@@ -716,3 +720,37 @@ def test_implementation_errors_point_at_its_call():
         f(1)
     (entry,) = [e for e in exc_info.traceback if e.name == "__call__"]
     assert "lookup" not in str(entry.statement)
+
+
+def test_call_with_dispatched_arguments_by_keyword_says_so():
+    @dispatch
+    def f(a, b, c=None) -> str:
+        return "default"
+
+    with pytest.raises(TypeError) as exc_info:
+        f(1, b=2, c=3)
+    assert str(exc_info.value) == (
+        f"{f.__qualname__}() takes 2 positional arguments to dispatch on, got 1; "
+        f"pass 'b' positionally, as only positional arguments are dispatched on"
+    )
+    assert exc_info.value.__suppress_context__
+
+
+def test_lookup_passes_on_errors_of_its_own():
+    error = TypeError("can't check subclasses")
+
+    class Failing(type):
+        def __subclasscheck__(cls, subclass):
+            raise error
+
+    class Base(metaclass=Failing):
+        pass
+
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    f.register(Base)(lambda a: "base")
+    with pytest.raises(TypeError) as exc_info:
+        f(1)
+    assert exc_info.value is error

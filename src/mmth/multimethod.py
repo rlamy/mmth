@@ -19,7 +19,7 @@ from typing import (
     overload,
 )
 
-from mmth.typemap import ChainTypeMap, TypeMap
+from mmth.typemap import ChainTypeMap, TypeMap, _count
 
 # Not the implementation's own type: implementations are all named `_`, so
 # type checkers would treat a subclass's `_` as overriding its base's.
@@ -402,6 +402,42 @@ class Multimethod:
         # So that errors and `registry` show the method itself.
         return functools.update_wrapper(adapted, method)
 
+    def _name(self) -> str:
+        """Return how error messages name this multimethod."""
+        return getattr(self, "__qualname__", type(self).__name__)
+
+    def _too_few_args_error(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+        """Describe a call with too few positional arguments to dispatch on."""
+        after_self = " after self" if self._skip else ""
+        message = (
+            f"{self._name()}() takes {_count(self._arity, 'positional argument')}"
+            f" to dispatch on{after_self}, got {max(len(args) - self._skip, 0)}"
+        )
+        default = getattr(self, "__wrapped__", None)
+        if default is None:
+            return message
+        _, params = self._params(default)
+        names = [p.name for p in params or () if p.kind is not p.VAR_POSITIONAL]
+        by_keyword = [repr(name) for name in names[: self._arity] if name in kwargs]
+        if by_keyword:
+            message += (
+                f"; pass {', '.join(by_keyword)} positionally, as only positional "
+                f"arguments are dispatched on"
+            )
+        return message
+
+    def _lookup_error(
+        self, error: TypeError, args: tuple[Any, ...], kwargs: dict[str, Any]
+    ) -> TypeError | None:
+        """Return the error to raise for a call's failed lookup, or None to re-raise.
+
+        `TypeMap.lookup()` reports it in terms of keys and types, so restate
+        it in terms of this multimethod and its arguments.
+        """
+        if len(args) - self._skip < self._arity:
+            return TypeError(self._too_few_args_error(args, kwargs))
+        return None
+
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Call the implementation chosen by the arguments' types."""
         # Fast path for one dispatched argument (see docs/performance.md).
@@ -417,7 +453,13 @@ class Multimethod:
         else:
             key = tuple(arg.__class__ for arg in args[skip : skip + self._arity])
         # Two statements, so that a traceback shows which one failed.
-        impl = self._registry.lookup(key)
+        try:
+            impl = self._registry.lookup(key)
+        except TypeError as e:
+            error = self._lookup_error(e, args, kwargs)
+            if error is None:
+                raise
+            raise error from None
         return impl(*args, **kwargs)
 
     def __set_name__(self, owner: type, name: str) -> None:

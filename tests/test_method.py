@@ -380,3 +380,17 @@ def test_inherited_multimethods_take_their_attribute_name():
     assert Sub.visit.__qualname__ == f"{prefix}Sub.visit"
     assert Explicit.visit.__qualname__ == f"{prefix}Explicit.visit"
     assert Sub.visit.__name__ == "visit"
+
+
+def test_unbound_call_lacks_an_argument_after_self():
+    class Handler:
+        @dispatchmethod
+        def visit(self, node: object):
+            return "default"
+
+    with pytest.raises(
+        TypeError,
+        match=r"Handler\.visit\(\) takes 1 positional "
+        r"argument to dispatch on after self, got 0$",
+    ):
+        Handler.visit(1)
