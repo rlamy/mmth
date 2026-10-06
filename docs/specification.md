@@ -198,6 +198,12 @@ like `functools.singledispatch` and `functools.singledispatchmethod`, except:
   any other type, so with one dispatched argument it raises `TypeError`,
   suggesting `func=SomeClass`; functools registers the class as the
   implementation.
+- **`dispatch` on a method**: functools binds the function to the instance
+  and dispatches on `self`. A `dispatch` multimethod isn't bound, so as a
+  class attribute it works as a static function; one whose default takes
+  `self` raises `TypeError` when the class is created, pointing to
+  `dispatchmethod` (wrapped in a `RuntimeError` on Python 3.11 and PyPy
+  3.11, as for `inherit()`; see docs/methods.md).
 - **`classmethod`/`staticmethod` implementations are stored adapted**:
   `registry` and `func[types]` hold a plain function that takes the
   multimethod's own arguments, not the `classmethod`/`staticmethod` object

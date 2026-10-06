@@ -408,3 +408,25 @@ def test_register_type_then_class_differs_from_functools():
     with pytest.raises(TypeError, match="pass func=Box$"):
         f.register(int, Box)
     assert type(reference(1)) is Box
+
+
+def test_dispatch_on_a_method_differs_from_functools():
+    # functools binds it, and dispatches on self; mmth doesn't bind it, so
+    # it refuses a default taking self
+    class Reference:
+        @functools.singledispatch
+        def meth(self, x):
+            return "default"
+
+        @meth.register(int)
+        def _(self, x):
+            return "int"
+
+    assert Reference().meth(1) == "default"
+
+    @dispatch
+    def meth(self, x):
+        return "default"
+
+    with pytest.raises(TypeError, match="use dispatchmethod"):
+        meth.__set_name__(Reference, "meth")

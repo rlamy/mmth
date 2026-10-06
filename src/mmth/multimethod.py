@@ -696,7 +696,18 @@ class Multimethod:
         """Take the attribute's name, unless named after a default already.
 
         So that a subclass's `inherit()`ed multimethod is named in errors.
+        Raise `TypeError` for a default taking `self` that this doesn't
+        bind, as `dispatch` doesn't.
         """
+        default = vars(self).get("__wrapped__")
+        if default is not None and self._skip == 0:
+            _, params = self._params(default)
+            if params and params[0].name == "self":
+                raise TypeError(
+                    f"{_describe(default)} takes self, but a dispatch "
+                    f"multimethod isn't bound as a method; use dispatchmethod "
+                    f"for {owner.__qualname__}.{name}"
+                )
         if "__qualname__" not in vars(self):
             self.__module__ = owner.__module__
             self.__name__ = name

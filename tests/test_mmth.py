@@ -582,6 +582,34 @@ def test_register_takes_a_class_as_implementation():
         f.register(func=Box)
 
 
+def test_dispatch_rejects_a_method_taking_self():
+    # called directly, since some interpreters wrap __set_name__ errors
+    # raised by a class statement in a RuntimeError
+    @dispatch
+    def meth(self, x) -> str:
+        return "default"
+
+    class A:
+        pass
+
+    with pytest.raises(
+        TypeError,
+        match=r"meth at .* takes self, .*; use dispatchmethod for .*A\.meth$",
+    ):
+        meth.__set_name__(A, "meth")
+
+    class B:
+        @dispatch
+        def helper(x) -> str:  # noqa: N805
+            return "default"
+
+        @helper.register(int)
+        def _(x) -> str:  # noqa: N805
+            return "int"
+
+    assert B.helper(1) == B().helper(1) == "int"
+
+
 def test_dispatch_takes_only_a_function():
     with pytest.raises(TypeError, match=r"dispatch\(\) expected a function, got 42"):
         dispatch(42)
