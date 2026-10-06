@@ -57,6 +57,20 @@ def _classes(t: Any) -> tuple[type, ...] | None:
     return None
 
 
+def _describe(func: Any) -> str:
+    """Return how error messages show `func`: its qualname and location.
+
+    Implementations are usually all named `_`, so only the location tells
+    them apart.
+    """
+    func = inspect.unwrap(func)
+    name = getattr(func, "__qualname__", None)
+    code = getattr(func, "__code__", None)
+    if name is None or code is None:
+        return repr(func)
+    return f"{name} at {code.co_filename}:{code.co_firstlineno}"
+
+
 def _is_function(obj: Any) -> bool:
     """Return whether `obj` can be registered as an implementation.
 
@@ -221,7 +235,7 @@ class Multimethod:
         if len(params) < self._arity:
             raise TypeError(
                 f"register() found too few parameters to dispatch on in "
-                f"{func.__qualname__}: needs {self._arity}; pass the types "
+                f"{_describe(func)}: needs {self._arity}; pass the types "
                 f"explicitly"
             )
         try:
@@ -235,13 +249,13 @@ class Multimethod:
             if annotation is p.empty:
                 raise TypeError(
                     f"register() found no type annotation on parameter "
-                    f"{p.name!r} of {func.__qualname__}; annotate it or pass "
+                    f"{p.name!r} of {_describe(func)}; annotate it or pass "
                     f"the types explicitly"
                 )
             if _classes(annotation) is None:
                 raise TypeError(
                     f"register() can't dispatch on parameter {p.name!r} of "
-                    f"{func.__qualname__}, annotated {annotation!r}; pass the "
+                    f"{_describe(func)}, annotated {annotation!r}; pass the "
                     f"types explicitly"
                 )
             types.append(annotation)

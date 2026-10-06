@@ -1,3 +1,5 @@
+import functools
+import re
 from typing import (
     Annotated,
     Any,
@@ -518,6 +520,21 @@ def test_register_requires_parameters_to_dispatch_on():
 
     with pytest.raises(TypeError, match="too few parameters to dispatch on"):
         f.register(h)
+    with pytest.raises(TypeError, match=r"in functools\.partial\(.*: needs 1"):
+        f.register(functools.partial(lambda: "partial"))
+
+
+def test_register_errors_locate_the_implementation():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    def _(a) -> str:
+        return "_"
+
+    location = f"{_.__qualname__} at {__file__}:{_.__code__.co_firstlineno};"
+    with pytest.raises(TypeError, match=re.escape(location)):
+        f.register(_)
 
 
 def test_register_rejects_non_types():
