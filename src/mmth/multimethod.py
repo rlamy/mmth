@@ -345,7 +345,14 @@ class Multimethod:
         impls = [self._registry.get(sig) for sig in _expand(types)]
         if impls[0] is not None and all(impl is impls[0] for impl in impls):
             return impls[0]
-        raise KeyError(f"No implementation registered for {types}")
+        if None in impls:
+            raise KeyError(
+                f"No implementation registered for exactly {self._format_call(types)}"
+            )
+        raise KeyError(
+            f"No one implementation registered for every member of "
+            f"{self._format_call(types)}"
+        )
 
     def __setitem__(self, types: _TypeSpec | tuple[_TypeSpec, ...], func: Any) -> None:
         """Register `func` for `types`, a single type or a tuple of them."""

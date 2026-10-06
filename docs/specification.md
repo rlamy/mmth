@@ -286,7 +286,7 @@ def foo(a: int) -> int:
     return a
 
 # KeyError - no implementation registered for exactly these types
-foo[float]  # KeyError: "No implementation registered for (<class 'float'>,)"
+foo[float]  # KeyError: 'No implementation registered for exactly foo(float)'
 
 # NoMatchError - no matching implementation
 bar = Multimethod(arity=1)

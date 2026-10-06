@@ -132,7 +132,13 @@ def test_keyerror_on_missing_implementation():
 
     with pytest.raises(KeyError) as exc_info:
         add[float, float]
-    assert "No implementation registered" in str(exc_info.value)
+    assert exc_info.value.args == (
+        f"No implementation registered for exactly {add.__qualname__}(float, float)",
+    )
+    add[int, int] = lambda a, b: "int, int"
+    add[int, str] = lambda a, b: "int, str"
+    with pytest.raises(KeyError, match=r"every member of .*add\(int, int \| str\)"):
+        add[int, int | str]
 
 
 def test_ambiguity_detection():
