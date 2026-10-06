@@ -660,9 +660,10 @@ class _PendingInherit:
                 f"defining a Multimethod named {name!r}"
             )
         dispatcher = parent.inherit()
+        # Named first, for errors from the registrations.
+        dispatcher.__set_name__(owner, name)
         for types, func in self._registrations:
             dispatcher.register(*types, func=func)
-        dispatcher.__set_name__(owner, name)
         setattr(owner, name, dispatcher)
 
 

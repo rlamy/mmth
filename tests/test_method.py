@@ -434,3 +434,24 @@ def test_ambiguity_error_shows_where_inherited_candidates_come_from():
     assert base.startswith(f"  visit(int, object): {Base.__qualname__}._ at ")
     assert sub.startswith(f"  visit(object, int): {Sub.__qualname__}._ at ")
     assert fix == "Register visit(int, int) to resolve it."
+
+
+def test_inherit_registration_errors_name_the_subclass_multimethod():
+    class Base:
+        @dispatchmethod
+        def visit(self, node: object):
+            return "default"
+
+    def _(self, a, b):
+        return "int, int"
+
+    pending = inherit()
+    pending.register(int, int)(_)
+
+    class Sub(Base):
+        pass
+
+    with pytest.raises(
+        TypeError, match=r"for visit\(int, int\): .*Sub\.visit dispatches"
+    ):
+        pending.__set_name__(Sub, "visit")
