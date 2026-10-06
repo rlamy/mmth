@@ -143,9 +143,13 @@ to isn't the one plain attribute lookup would find, spell it out instead
 with `Base.visit.inherit()` (see `Multimethod.inherit`) - `inherit()` is
 just that, with the base found automatically for the common case.
 
-(On Python 3.11, an error raised while resolving `inherit()` - e.g. no
-base class actually defines that name - arrives wrapped in a
-`RuntimeError` with the original exception as its `__cause__`, rather than
-directly; this is a difference in how CPython itself handles `__set_name__`
-failures across versions, not something mmth controls.)
+Registering on `inherit()` is deferred until then too, since only the base
+multimethod tells how many arguments to dispatch on. So an error from it -
+no base class defining that name, or a registration it rejects, like one
+with a missing annotation - is raised at the end of the class statement.
+On Python 3.11 and PyPy 3.11, it arrives wrapped in a `RuntimeError` with
+the original exception as its `__cause__`, rather than directly; this is
+how those interpreters handle `__set_name__` failures, not something mmth
+controls. `Base.visit.inherit()` registers at once, so its errors aren't
+wrapped.
 
