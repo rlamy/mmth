@@ -25,6 +25,7 @@ from mmth.typemap import (
     NoMatchError,
     TypeMap,
     _count,
+    _format_types,
     _type_name,
 )
 
@@ -365,10 +366,24 @@ class Multimethod:
     def dispatch(self, *types: _TypeSpec) -> Any:
         """Return the implementation a call with arguments of `types` would run."""
         types, _ = _parse_decorator_args("dispatch()", types)
+        if len(types) != self._arity:
+            raise TypeError(
+                f"dispatch() expected {_count(self._arity, 'type')}, got "
+                f"{len(types)}: {_format_types(types)}"
+            )
         sigs = _expand(types)
         if len(sigs) != 1:
-            raise TypeError(f"dispatch() expected one class per argument, got {types}")
-        return self._registry.lookup(sigs[0])
+            raise TypeError(
+                f"dispatch() expected one class per argument, got "
+                f"{_format_types(types)}"
+            )
+        try:
+            return self._registry.lookup(sigs[0])
+        except TypeError as e:
+            error = self._lookup_error(e)
+            if error is None:
+                raise
+            raise error from None
 
     def _callable(self, func: Any) -> Any:
         """Adapt `func` to be called with this multimethod's own arguments.
@@ -478,16 +493,12 @@ class Multimethod:
             )
         return message
 
-    def _lookup_error(
-        self, error: TypeError, args: tuple[Any, ...], kwargs: dict[str, Any]
-    ) -> TypeError | None:
-        """Return the error to raise for a call's failed lookup, or None to re-raise.
+    def _lookup_error(self, error: TypeError) -> TypeError | None:
+        """Return the error to raise for a failed lookup, or None to re-raise.
 
-        `TypeMap.lookup()` reports it in terms of keys and types, so restate
-        it in terms of this multimethod and its arguments.
+        `TypeMap.lookup()` reports it in terms of keys, so restate it in
+        terms of this multimethod.
         """
-        if len(args) - self._skip < self._arity:
-            return TypeError(self._too_few_args_error(args, kwargs))
         if isinstance(error, NoMatchError):
             return NoMatchError(self._no_match_error(error.types), error.types)
         if isinstance(error, AmbiguousMatchError):
@@ -497,6 +508,14 @@ class Multimethod:
                 error.candidates,
             )
         return None
+
+    def _call_error(
+        self, error: TypeError, args: tuple[Any, ...], kwargs: dict[str, Any]
+    ) -> TypeError | None:
+        """Return the error to raise for a call's failed lookup, or None to re-raise."""
+        if len(args) - self._skip < self._arity:
+            return TypeError(self._too_few_args_error(args, kwargs))
+        return self._lookup_error(error)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Call the implementation chosen by the arguments' types."""
@@ -516,7 +535,7 @@ class Multimethod:
         try:
             impl = self._registry.lookup(key)
         except TypeError as e:
-            error = self._lookup_error(e, args, kwargs)
+            error = self._call_error(e, args, kwargs)
             if error is None:
                 raise
             raise error from None

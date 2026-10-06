@@ -775,6 +775,31 @@ def test_dispatch_method_accepts_annotations():
         f.dispatch(Optional[int])
 
 
+def test_dispatch_method_errors_match_a_calls():
+    class A:
+        pass
+
+    class B:
+        pass
+
+    class AB(A, B):
+        pass
+
+    f = Multimethod(arity=1)
+    f.register(A)(lambda a: "A")
+    f.register(B)(lambda a: "B")
+    with pytest.raises(
+        TypeError, match=r"^dispatch\(\) expected 1 type, got 2: \(A, B\)$"
+    ):
+        f.dispatch(A, B)
+    for cls, error in [(AB, AmbiguousMatchError), (int, NoMatchError)]:
+        with pytest.raises(error) as from_dispatch:
+            f.dispatch(cls)
+        with pytest.raises(error) as from_call:
+            f(cls())
+        assert str(from_dispatch.value) == str(from_call.value)
+
+
 def test_implementation_errors_point_at_its_call():
     @dispatch
     def f(a: object) -> str:
