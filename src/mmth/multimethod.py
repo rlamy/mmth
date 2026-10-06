@@ -431,6 +431,11 @@ class Multimethod:
         impls = [self._registry.get(sig) for sig in _expand(types)]
         if impls[0] is not None and all(impl is impls[0] for impl in impls):
             return impls[0]
+        if len(types) != self._arity:
+            raise KeyError(
+                f"No implementation registered for {self._format_call(types)}: "
+                f"{self._name()} dispatches on {_count(self._arity, 'argument')}"
+            )
         if None in impls:
             raise KeyError(
                 f"No implementation registered for exactly {self._format_call(types)}"

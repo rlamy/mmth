@@ -137,6 +137,8 @@ def test_keyerror_on_missing_implementation():
     assert exc_info.value.args == (
         f"No implementation registered for exactly {add.__qualname__}(float, float)",
     )
+    with pytest.raises(KeyError, match=r"for .*add\(float\): .*add dispatches on 2 "):
+        add[float]
     add[int, int] = lambda a, b: "int, int"
     add[int, str] = lambda a, b: "int, str"
     with pytest.raises(KeyError, match=r"every member of .*add\(int, int \| str\)"):
