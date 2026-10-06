@@ -522,6 +522,8 @@ def test_register_rejects_another_arity_than_the_default():
         f"can't register {_located(_)} for f(int): {f.__qualname__} dispatches "
         f"on 2 arguments, not 1"
     )
+    with pytest.raises(TypeError, match=r"for f\(\): .* not 0$"):
+        f[()] = lambda a, b: "nothing"
     with pytest.raises(TypeError, match=r"for f\(int, int, int\): .* not 3$"):
         f[int, int, int] = lambda a, b, c: "int, int, int"
     assert list(f.registry) == [(object, object)]
@@ -982,6 +984,8 @@ def test_arity_zero_dispatches_on_nothing():
     assert f() == "default"
     with pytest.raises(TypeError, match="dispatches on 0 arguments, not 1$"):
         f.register(int)(lambda: "int")
+    f[()] = lambda: "replaced"
+    assert f() == "replaced"
 
 
 @pytest.mark.skipif(sys.version_info < (3, 14), reason="lazy annotations")

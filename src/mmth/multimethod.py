@@ -172,18 +172,21 @@ def _parse_decorator_args(
 
 
 def _register_with(
-    add: Callable[[tuple[Any, ...], Any], None], types: tuple[Any, ...], func: Any
+    add: Callable[[tuple[Any, ...] | None, Any], None],
+    types: tuple[Any, ...],
+    func: Any,
 ) -> Any:
     """Handle `register()`'s arguments, registering through `add(types, func)`.
 
-    Return `func`, or without it a decorator that registers the function.
+    `add` gets None for types to take from the annotations. Return `func`,
+    or without it a decorator that registers the function.
     """
     types, func = _parse_decorator_args("register()", types, func)
 
     def decorator(func: Any) -> Any:
         if not _is_function(func):
             raise TypeError(f"register() expected a function, got {func!r}")
-        add(types, func)
+        add(types or None, func)
         return func
 
     return decorator(func) if func is not None else decorator
@@ -350,15 +353,18 @@ class Multimethod:
             types.append(annotation)
         return tuple(types)
 
-    def _register(self, types: tuple[Any, ...], func: Any) -> None:
-        if types and len(types) != self._arity:
+    def _register(self, types: tuple[Any, ...] | None, func: Any) -> None:
+        """Register `func` for `types`, or for its annotations if None."""
+        if types is not None and len(types) != self._arity:
             raise TypeError(
                 f"can't register {_describe(func)} for "
                 f"{self._format_call(types, short=True)}: {self._name()} "
                 f"dispatches on {_count(self._arity, 'argument')}, not {len(types)}"
             )
         impl = self._callable(func)
-        for sig in _expand(types or self._param_types(func)):
+        if types is None:
+            types = self._param_types(func)
+        for sig in _expand(types):
             self._registry[sig] = impl
 
     # The types-first order matters: a type is itself callable, so
@@ -668,7 +674,7 @@ class _PendingInherit:
     """
 
     def __init__(self) -> None:
-        self._registrations: list[tuple[tuple[Any, ...], Any]] = []
+        self._registrations: list[tuple[tuple[Any, ...] | None, Any]] = []
 
     def register(self, *types: Any, func: Any = None) -> Any:
         # Annotations are only read once `__set_name__` has the real
@@ -696,7 +702,7 @@ class _PendingInherit:
         # Named first, for errors from the registrations.
         dispatcher.__set_name__(owner, name)
         for types, func in self._registrations:
-            dispatcher.register(*types, func=func)
+            dispatcher._register(types, func)
         setattr(owner, name, dispatcher)
 
 
