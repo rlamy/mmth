@@ -24,6 +24,8 @@ class TypeMap(MutableMapping[_Signature, Any]):
     looks up the value of the most specific key that a tuple of types
     matches position by position, each a subclass of the key's type; an
     exact key is always the most specific. It caches its results.
+
+    All keys have the same length, its `arity`, set by the first key stored.
     """
 
     # Slots, since `lookup()` is performance-critical (see
@@ -33,6 +35,7 @@ class TypeMap(MutableMapping[_Signature, Any]):
         "_cache",
         "_abc_token",
         "_dependents",
+        "_arity",
         "_adapt",
         "__weakref__",
     )
@@ -40,6 +43,7 @@ class TypeMap(MutableMapping[_Signature, Any]):
     # Formatted with `types`; a subclass can reword them for its own domain.
     _no_match_message = "No key matches types {types}"
     _ambiguous_message = "Ambiguous lookup for types {types}: matches several keys"
+    _arity_message = "Expected {arity} types, got {types}"
 
     def __init__(self, *, adapt: Callable[[Any], Any] | None = None) -> None:
         """Create an empty type map.
@@ -59,7 +63,17 @@ class TypeMap(MutableMapping[_Signature, Any]):
         self._dependents: weakref.WeakValueDictionary[int, TypeMap] = (
             weakref.WeakValueDictionary()
         )
+        self._arity: int | None = None
         self._adapt = adapt
+
+    def _check_arity(self, sig: _Signature) -> None:
+        if self._arity is None:
+            self._arity = len(sig)
+        elif len(sig) != self._arity:
+            raise ValueError(
+                f"Key {sig} has {len(sig)} types, but this type map's keys "
+                f"have {self._arity}"
+            )
 
     def _invalidate_cache(self) -> None:
         self._cache.clear()
@@ -73,7 +87,7 @@ class TypeMap(MutableMapping[_Signature, Any]):
 
     @staticmethod
     def _match_signature(sig: _Signature, types: _Signature) -> bool:
-        return len(sig) == len(types) and all(
+        return all(
             isinstance(sig_type, type) and issubclass(arg_type, sig_type)
             for sig_type, arg_type in zip(sig, types)
         )
@@ -108,6 +122,9 @@ class TypeMap(MutableMapping[_Signature, Any]):
         return maximal[0][1]
 
     def _miss(self, types: _Signature) -> Any:
+        arity = self.arity
+        if arity is not None and len(types) != arity:
+            raise TypeError(self._arity_message.format(arity=arity, types=types))
         table = self._lookup_table()
         try:
             value = table[types]
@@ -122,7 +139,11 @@ class TypeMap(MutableMapping[_Signature, Any]):
         return self._table[sig]
 
     def __setitem__(self, sig: _Signature, value: Any) -> None:
-        """Store `value` under exactly the key `sig`."""
+        """Store `value` under exactly the key `sig`.
+
+        Raise `ValueError` if `sig`'s length isn't this type map's `arity`.
+        """
+        self._check_arity(sig)
         self._table[sig] = value
         if self._abc_token is None and any(
             hasattr(t, "__abstractmethods__") for t in sig
@@ -153,17 +174,23 @@ class TypeMap(MutableMapping[_Signature, Any]):
         """
         new = self._empty_copy()
         new._table = self._table.copy()
+        new._arity = self._arity
         if self._abc_token is not None:
             new._abc_token = get_cache_token()
         return new
+
+    @property
+    def arity(self) -> int | None:
+        """Return the length of every key, or None until one is stored."""
+        return self._arity
 
     def lookup(self, key: type | _Signature) -> Any:
         """Return the value for the most specific key the types `key` match.
 
         `key` is a tuple of types, or a bare type for a one-element tuple.
-        Raise `NoMatchError` if no key matches, and
-        `AmbiguousMatchError` if no single matching key is more specific than
-        all the others. The result is cached, per `key`, until this type map
+        Raise `TypeError` if `key` doesn't have `arity` types, `NoMatchError`
+        if no key matches, and `AmbiguousMatchError` if no single matching key
+        is more specific than all the others. The result is cached, per `key`, until this type map
         changes.
         """
         if self._abc_token is not None and self._abc_token != get_cache_token():
@@ -184,7 +211,7 @@ class ChainTypeMap(TypeMap):
     As a mapping, it only holds its own keys; `lookup()` looks among the keys
     `parent | self`, as by `dict.__or__`, so its own keys replace equal ones,
     and the most specific of all the others wins. Its cache is invalidated
-    when the parent changes.
+    when the parent changes. It shares its parent's `arity`.
     """
 
     __slots__ = ("_parent",)
@@ -202,6 +229,9 @@ class ChainTypeMap(TypeMap):
         if parent._abc_token is not None:
             self._abc_token = get_cache_token()
 
+    def _check_arity(self, sig: _Signature) -> None:
+        self._parent._check_arity(sig)
+
     def _invalidate_cache(self) -> None:
         # The parent may have just started watching ABCs.
         if self._abc_token is None and self._parent._abc_token is not None:
@@ -213,3 +243,8 @@ class ChainTypeMap(TypeMap):
 
     def _empty_copy(self) -> Self:
         return type(self)(self._parent, adapt=self._adapt)
+
+    @property
+    def arity(self) -> int | None:
+        """Return the length of every key, shared with the parent."""
+        return self._parent.arity

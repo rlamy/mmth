@@ -228,7 +228,7 @@ def test_getitem_returns_default():
 
 def test_setitem_returns_none():
     @dispatch
-    def foo(a: int) -> int:
+    def foo(a: int, b: int) -> int:
         return a
 
     class SetTracker:
@@ -328,6 +328,18 @@ def test_dispatch_default_arity_ignores_keyword_only_params():
 
     assert f.registry == {object: f.__wrapped__}
     assert f(1, key="k", extra=0) == "default k"
+
+
+def test_register_rejects_another_arity_than_the_default():
+    @dispatch
+    def f(a, b) -> str:
+        return "default"
+
+    with pytest.raises(ValueError, match="has 1 types"):
+        f.register(int)(lambda a: "int")
+    with pytest.raises(TypeError, match="Expected 2 types") as exc_info:
+        f(1)
+    assert exc_info.type is TypeError
 
 
 def test_dispatch_takes_only_a_function():
@@ -459,11 +471,9 @@ def test_register_accepts_types_outside_the_default_annotation():
 
     f.register(object, int)(lambda a, b: "object, int")
     f[Animal, str] = lambda a, b: "animal, str"
-    f.register(int)(lambda a: "one argument")
     assert f(1, 2) == "object, int"
     assert f(Animal(), "s") == "animal, str"
     assert f(Animal(), 1.0) == "default"
-    assert f(1) == "one argument"
 
 
 def test_setitem_accepts_any_object():
@@ -478,34 +488,35 @@ def test_setitem_accepts_any_object():
 
 def test_any_means_object():
     @dispatch
-    def f(a: Any) -> str:
+    def f(a: Any, b: Any) -> str:
         return "default"
 
-    assert f[object] is f.__wrapped__
-    f.register(int)(lambda a: "int")  # a subclass of the default's Any
+    assert f[object, object] is f.__wrapped__
+    f.register(int, int)(lambda a, b: "int, int")  # subclasses of the default's Any
 
     @f.register
     def g(a: Any, b: int) -> str:
         return "any, int"
 
-    assert f(1) == "int"
+    assert f(1, 1) == "int, int"
     assert f("s", 1) == "any, int"
+    assert f("s", "s") == "default"
 
 
 def test_none_means_nonetype():
     @dispatch
-    def f(a: object) -> str:
+    def f(a: object, b: object) -> str:
         return "default"
 
-    f.register(None)(lambda a: "none")
+    f.register(None, object)(lambda a, b: "none, object")
 
     @f.register
     def g(a: None, b: None) -> str:
         return "none, none"
 
-    assert f(None) == "none"
+    assert f(None, 1) == "none, object"
     assert f(None, None) == "none, none"
-    assert f[None] is f[type(None)]
+    assert f[None, None] is f[type(None), type(None)]
 
 
 def test_optional_and_union_members():

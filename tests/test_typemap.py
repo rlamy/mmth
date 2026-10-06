@@ -43,12 +43,30 @@ def test_lookup_finds_exact_then_most_specific():
     tm = TypeMap()
     tm[(Animal,)] = "animal"
     tm[(Dog,)] = "dog"
-    tm[(Animal, Animal)] = "animal, animal"
     assert tm.lookup(Animal) == tm.lookup((Animal,)) == "animal"
     assert tm.lookup(PetDog) == "dog"
-    assert tm.lookup((Dog, PetDog)) == "animal, animal"
     with pytest.raises(NoMatchError, match="No key matches"):
         tm.lookup(int)
+
+
+def test_keys_all_have_the_arity_shared_with_the_parent():
+    parent = TypeMap()
+    child = ChainTypeMap(parent)
+    assert child.arity is None
+    with pytest.raises(NoMatchError):
+        child.lookup(Dog)
+    child[(Animal, Animal)] = "animal, animal"
+    assert parent.arity == child.arity == 2
+    with pytest.raises(ValueError, match="has 1 types"):
+        parent[(Animal,)] = "animal"
+    assert child.lookup((Dog, Dog)) == "animal, animal"
+    for key in [Dog, (Dog, Dog, Dog)]:
+        with pytest.raises(TypeError, match="Expected 2 types") as exc_info:
+            child.lookup(key)
+        assert exc_info.type is TypeError
+    assert copy.copy(child).arity == 2
+    del child[(Animal, Animal)]
+    assert child.arity == 2
 
 
 def test_lookup_raises_on_ambiguity():
@@ -69,8 +87,6 @@ def test_lookup_falls_back_on_ancestors():
     assert child.lookup(Dog) == grandchild.lookup(Dog) == "animal"
     assert child.lookup(int) == "root object"
     assert grandchild.lookup(int) == "grandchild object"
-    with pytest.raises(NoMatchError):
-        grandchild.lookup((int, int))
 
 
 def test_lookup_merges_parent_keys_with_own():
