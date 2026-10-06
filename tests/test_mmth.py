@@ -701,3 +701,18 @@ def test_dispatch_method_accepts_annotations():
     assert f.dispatch(Annotated[bool, "m"])(True) == "int"
     with pytest.raises(TypeError, match="one class per argument"):
         f.dispatch(Optional[int])
+
+
+def test_implementation_errors_point_at_its_call():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    @f.register(int)
+    def _(a, b) -> str:
+        return "int"
+
+    with pytest.raises(TypeError, match="missing 1 required positional") as exc_info:
+        f(1)
+    (entry,) = [e for e in exc_info.traceback if e.name == "__call__"]
+    assert "lookup" not in str(entry.statement)

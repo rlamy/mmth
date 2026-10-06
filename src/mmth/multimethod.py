@@ -416,7 +416,9 @@ class Multimethod:
                 key = ()  # too few arguments: let lookup() raise
         else:
             key = tuple(arg.__class__ for arg in args[skip : skip + self._arity])
-        return self._registry.lookup(key)(*args, **kwargs)
+        # Two statements, so that a traceback shows which one failed.
+        impl = self._registry.lookup(key)
+        return impl(*args, **kwargs)
 
     def __get__(self, instance: object | None, owner: type | None = None) -> Any:
         """Bind to `instance` as a method, or to `owner` for a classmethod."""
