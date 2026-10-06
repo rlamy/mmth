@@ -3,6 +3,7 @@
 import functools
 import inspect
 import itertools
+import sys
 from collections.abc import Mapping
 from types import MappingProxyType, MethodType, NoneType, UnionType
 from typing import (
@@ -36,6 +37,15 @@ _Registered = Any
 _TypeSpec = type | UnionType | TypeVar | _SpecialForm | None
 # How many registered signatures a `NoMatchError` lists.
 _MAX_LISTED = 5
+
+# Annotations are evaluated lazily since Python 3.14, so reading a signature
+# can raise `NameError`; leave the ones that don't resolve yet as
+# `ForwardRef`s.
+_SIGNATURE_OPTIONS: dict[str, Any] = {}
+if sys.version_info >= (3, 14):
+    from annotationlib import Format
+
+    _SIGNATURE_OPTIONS["annotation_format"] = Format.FORWARDREF
 
 
 def _classes(t: Any) -> tuple[type, ...] | None:
@@ -225,7 +235,8 @@ class Multimethod:
         """
         func, skip = self._unwrap(func)
         try:
-            params = list(inspect.signature(func).parameters.values())[skip:]
+            signature = inspect.signature(func, **_SIGNATURE_OPTIONS)
+            params = list(signature.parameters.values())[skip:]
         except (ValueError, TypeError):
             return func, None
         positional = [

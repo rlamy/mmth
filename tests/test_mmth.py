@@ -1,5 +1,6 @@
 import functools
 import re
+import sys
 from typing import (
     Annotated,
     Any,
@@ -875,3 +876,16 @@ def test_arity_zero_dispatches_on_nothing():
     assert f() == "default"
     with pytest.raises(TypeError, match="dispatches on 0 arguments, not 1$"):
         f.register(int)(lambda: "int")
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="lazy annotations")
+def test_unresolved_annotations_off_dispatch_are_ignored():
+    @dispatch
+    def f(a, b: Later = None) -> Later:  # noqa: F821
+        return "default"
+
+    @f.register
+    def _(a: int, b: Later = None) -> Later:  # noqa: F821
+        return "int"
+
+    assert f(1) == "int"
