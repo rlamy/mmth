@@ -83,6 +83,24 @@ def _parse_decorator_args(
     return args, func
 
 
+def _register_with(
+    add: Callable[[tuple[Any, ...], Any], None], types: tuple[Any, ...], func: Any
+) -> Any:
+    """Handle `register()`'s arguments, registering through `add(types, func)`.
+
+    Return `func`, or without it a decorator that registers the function.
+    """
+    types, func = _parse_decorator_args("register()", types, func)
+
+    def decorator(func: Any) -> Any:
+        if not _is_function(func):
+            raise TypeError(f"register() expected a function, got {func!r}")
+        add(types, func)
+        return func
+
+    return decorator(func) if func is not None else decorator
+
+
 def _expand(types: tuple[Any, ...]) -> list[tuple[type, ...]]:
     """Return the signatures of classes that type annotations `types` mean."""
     return list(itertools.product(*(_classes(t) or () for t in types)))
@@ -238,15 +256,7 @@ class Multimethod:
         registers the implementation for each member. Also accepts a
         `classmethod` or `staticmethod`, for a method.
         """
-        types, func = _parse_decorator_args("register()", types, func)
-
-        def decorator(func: Any) -> _Registered:
-            if not _is_function(func):
-                raise TypeError(f"register() expected a function, got {func!r}")
-            self._register(types, func)
-            return func
-
-        return decorator(func) if func is not None else decorator
+        return _register_with(self._register, types, func)
 
     def inherit(self) -> Self:
         """Return a multimethod for a subclass, inheriting this one's.
@@ -382,15 +392,13 @@ class _PendingInherit:
         self._registrations: list[tuple[tuple[Any, ...], Any]] = []
 
     def register(self, *types: Any, func: Any = None) -> Any:
-        # Same forms as `Multimethod.register`; annotations are only read
-        # once `__set_name__` has the real multimethod (and its `_skip`).
-        types, func = _parse_decorator_args("register()", types, func)
-
-        def decorator(func: Any) -> Any:
-            self._registrations.append((types, func))
-            return func
-
-        return decorator(func) if func is not None else decorator
+        # Annotations are only read once `__set_name__` has the real
+        # multimethod (and its `_skip`).
+        return _register_with(
+            lambda types, func: self._registrations.append((types, func)),
+            types,
+            func,
+        )
 
     def __set_name__(self, owner: type, name: str) -> None:
         parent = None

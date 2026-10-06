@@ -254,6 +254,11 @@ def test_inherit_function_raises_without_a_matching_base():
         pending.__set_name__(Orphan, "visit")
 
 
+def test_inherit_function_register_rejects_non_function_at_once():
+    with pytest.raises(TypeError, match=r"register\(\) expected a function"):
+        inherit().register(int)(42)
+
+
 def test_dispatchmethod_register_bare_uses_annotations_past_self():
     class Evaluator:
         @dispatchmethod
