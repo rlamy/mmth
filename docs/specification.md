@@ -105,10 +105,11 @@ When `function_name(arg1, arg2, ...)` is called:
 - **Exact types**: `int` matches `int` only
 - **Subclass types**: `Animal` matches `Dog` if `Dog` is subclass of `Animal`
 - **Single type shorthand**: `func[int]` is equivalent to `func[(int,)]`
-- **One arity**: every signature has as many types as the first one
-  registered (the default's, for `@dispatch`); registering another length
-  raises `ValueError`, and a call with another number of positional
-  arguments raises `TypeError` (not `NoMatchError`)
+- **One arity**: every signature has the multimethod's arity, as many types
+  as the default has positional parameters (or `Multimethod(arity=n)`,
+  required without a default); registering another length raises
+  `ValueError`, and a call with another number of positional arguments
+  raises `TypeError` (not `NoMatchError`)
 - **ABCs**: matching uses `issubclass`, so abstract base classes match their
   virtual subclasses (via `ABC.register()` or `__subclasshook__`), including
   ones registered after the multimethod was first called
@@ -144,7 +145,9 @@ Underneath, the implementations live in a `mmth.TypeMap`, a mutable mapping
 of exactly the signatures registered on it (so `del typemap[sig]`
 unregisters `sig`), whose `lookup(types)` returns, cached, what a call
 with arguments of `types` would run: exact match, else most specialized.
-Its keys all have the same length, its `arity`. An `inherit()` multimethod keeps them in a
+It's built from an initial table, e.g. `TypeMap({(int,): f})`, whose keys
+set its `arity`, the length all its keys share (`TypeMap(arity=n)` starts
+one empty). An `inherit()` multimethod keeps them in a
 `mmth.ChainTypeMap`, whose `lookup()` looks among the signatures
 `parent | child`, sharing the parent's arity.
 
@@ -273,7 +276,7 @@ def foo(a: int) -> int:
 foo[float]  # KeyError: "No implementation registered for (<class 'float'>,)"
 
 # NoMatchError - no matching implementation
-bar = Multimethod()
+bar = Multimethod(arity=1)
 
 @bar.register(int)
 def _(a: int) -> int:

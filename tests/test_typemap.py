@@ -23,10 +23,8 @@ class PetDog(Dog, Pet):
 
 
 def test_mapping_is_exact_and_own_keys_only():
-    parent = TypeMap()
-    parent[(object,)] = "object"
-    tm = ChainTypeMap(parent)
-    tm[(Animal,)] = "animal"
+    parent = TypeMap({(object,): "object"})
+    tm = ChainTypeMap(parent, {(Animal,): "animal"})
     assert tm[(Animal,)] == "animal"
     with pytest.raises(KeyError):
         tm[(Dog,)]
@@ -40,62 +38,60 @@ def test_mapping_is_exact_and_own_keys_only():
 
 
 def test_lookup_finds_exact_then_most_specific():
-    tm = TypeMap()
-    tm[(Animal,)] = "animal"
-    tm[(Dog,)] = "dog"
+    tm = TypeMap({(Animal,): "animal", (Dog,): "dog"})
     assert tm.lookup(Animal) == tm.lookup((Animal,)) == "animal"
     assert tm.lookup(PetDog) == "dog"
     with pytest.raises(NoMatchError, match="No key matches"):
         tm.lookup(int)
 
 
-def test_keys_all_have_the_arity_shared_with_the_parent():
-    parent = TypeMap()
-    child = ChainTypeMap(parent)
-    assert child.arity is None
-    with pytest.raises(NoMatchError):
-        child.lookup(Dog)
-    child[(Animal, Animal)] = "animal, animal"
-    assert parent.arity == child.arity == 2
+def test_arity_is_given_or_inferred_from_the_table():
+    for table in [None, {}]:
+        with pytest.raises(TypeError, match="needs an arity"):
+            TypeMap(table)
+    assert TypeMap(arity=2).arity == 2
+    assert TypeMap({(Animal, Animal): "animal, animal"}).arity == 2
     with pytest.raises(ValueError, match="has 1 types"):
-        parent[(Animal,)] = "animal"
+        TypeMap({(Animal,): "animal"}, arity=2)
+    with pytest.raises(ValueError, match="has 1 types"):
+        TypeMap({(Animal, Animal): "animal, animal", (Animal,): "animal"})
+
+
+def test_keys_all_have_the_arity_of_the_parent():
+    parent = TypeMap(arity=2)
+    with pytest.raises(NoMatchError):
+        parent.lookup((Dog, Dog))
+    child = ChainTypeMap(parent, {(Animal, Animal): "animal, animal"})
+    assert child.arity == copy.copy(child).arity == 2
+    with pytest.raises(ValueError, match="has 1 types"):
+        ChainTypeMap(parent, {(Animal,): "animal"})
+    with pytest.raises(ValueError, match="has 1 types"):
+        child[(Animal,)] = "animal"
     assert child.lookup((Dog, Dog)) == "animal, animal"
     for key in [Dog, (Dog, Dog, Dog)]:
         with pytest.raises(TypeError, match="Expected 2 types") as exc_info:
             child.lookup(key)
         assert exc_info.type is TypeError
-    assert copy.copy(child).arity == 2
-    del child[(Animal, Animal)]
-    assert child.arity == 2
 
 
 def test_lookup_raises_on_ambiguity():
-    tm = TypeMap()
-    tm[(Dog,)] = "dog"
-    tm[(Pet,)] = "pet"
+    tm = TypeMap({(Dog,): "dog", (Pet,): "pet"})
     with pytest.raises(AmbiguousMatchError, match="Ambiguous lookup"):
         tm.lookup(PetDog)
 
 
 def test_lookup_falls_back_on_ancestors():
-    root = TypeMap()
-    root[(object,)] = "root object"
-    root[(Animal,)] = "animal"
+    root = TypeMap({(object,): "root object", (Animal,): "animal"})
     child = ChainTypeMap(root)
-    grandchild = ChainTypeMap(child)
-    grandchild[(object,)] = "grandchild object"
+    grandchild = ChainTypeMap(child, {(object,): "grandchild object"})
     assert child.lookup(Dog) == grandchild.lookup(Dog) == "animal"
     assert child.lookup(int) == "root object"
     assert grandchild.lookup(int) == "grandchild object"
 
 
 def test_lookup_merges_parent_keys_with_own():
-    parent = TypeMap()
-    parent[(Animal,)] = "parent animal"
-    parent[(Dog,)] = "parent dog"
-    child = ChainTypeMap(parent)
-    child[(object,)] = "child object"
-    child[(Animal,)] = "child animal"
+    parent = TypeMap({(Animal,): "parent animal", (Dog,): "parent dog"})
+    child = ChainTypeMap(parent, {(object,): "child object", (Animal,): "child animal"})
     assert child.lookup(Animal) == "child animal"
     assert child.lookup(PetDog) == "parent dog"
     assert child.lookup(int) == "child object"
@@ -118,8 +114,7 @@ def test_lookup_caches_until_the_type_map_changes():
     class Leaf(Base):
         pass
 
-    tm = TypeMap()
-    tm[(Base,)] = "base"
+    tm = TypeMap({(Base,): "base"})
     assert tm.lookup(Leaf) == "base"
     assert checks
     checks.clear()
@@ -131,10 +126,8 @@ def test_lookup_caches_until_the_type_map_changes():
 
 
 def test_delitem_removes_only_exact_own_keys():
-    parent = TypeMap()
-    parent[(Animal,)] = "animal"
-    tm = ChainTypeMap(parent)
-    tm[(Dog,)] = "dog"
+    parent = TypeMap({(Animal,): "animal"})
+    tm = ChainTypeMap(parent, {(Dog,): "dog"})
     with pytest.raises(KeyError):
         del tm[(PetDog,)]
     with pytest.raises(KeyError):
@@ -146,8 +139,7 @@ def test_delitem_removes_only_exact_own_keys():
 
 
 def test_parent_changes_invalidate_children():
-    parent = TypeMap()
-    parent[(object,)] = "object"
+    parent = TypeMap({(object,): "object"})
     child = ChainTypeMap(parent)
     grandchild = ChainTypeMap(child)
     assert grandchild.lookup(Dog) == "object"
@@ -161,9 +153,7 @@ def test_abc_registration_invalidates_cache():
     class Walker(ABC):
         pass
 
-    parent = TypeMap()
-    parent[(object,)] = "object"
-    parent[(Walker,)] = "walker"
+    parent = TypeMap({(object,): "object", (Walker,): "walker"})
     child = ChainTypeMap(parent)
     assert parent.lookup(Dog) == child.lookup(Dog) == "object"
     Walker.register(Dog)
@@ -174,8 +164,7 @@ def test_children_watch_abcs_once_their_parent_does():
     class Walker(ABC):
         pass
 
-    parent = TypeMap()
-    parent[(object,)] = "object"
+    parent = TypeMap({(object,): "object"})
     grandchild = ChainTypeMap(ChainTypeMap(parent))
     assert grandchild.lookup(Dog) == "object"
     parent[(Walker,)] = "walker"
@@ -185,10 +174,8 @@ def test_children_watch_abcs_once_their_parent_does():
 
 
 def test_copy_is_independent_but_keeps_parent():
-    parent = TypeMap()
-    parent[(object,)] = "object"
-    tm = ChainTypeMap(parent)
-    tm[(Animal,)] = "animal"
+    parent = TypeMap({(object,): "object"})
+    tm = ChainTypeMap(parent, {(Animal,): "animal"})
     child = ChainTypeMap(tm)
     assert child.lookup(Dog) == "animal"
 
@@ -210,9 +197,7 @@ def test_copy_keeps_watching_abcs():
     class Walker(ABC):
         pass
 
-    tm = TypeMap()
-    tm[(object,)] = "object"
-    tm[(Walker,)] = "walker"
+    tm = TypeMap({(object,): "object", (Walker,): "walker"})
     clone = copy.copy(tm)
     assert clone.lookup(Dog) == "object"
     Walker.register(Dog)

@@ -23,7 +23,7 @@ def _maximal_registered_ancestors(node, registered, ancestors):
 @given(multi_inheritance_dag().flatmap(with_registered_subset), st.booleans())
 def test_dispatch_handles_multiple_inheritance(data, reverse_registration_order):
     classes, ancestors, registered = data
-    mm = Multimethod()
+    mm = Multimethod(arity=1)
 
     # registration order mustn't affect the result
     for i in sorted(registered, reverse=reverse_registration_order):
@@ -97,7 +97,7 @@ def _maximal_registered_signatures(query, registered, ancestors_lists):
 def test_multi_arg_dispatch_handles_ambiguity(data, reverse_registration_order):
     class_lists, ancestors_lists, registered = data
     arity = len(class_lists)
-    mm = Multimethod()
+    mm = Multimethod(arity=arity)
 
     for sig in sorted(registered, reverse=reverse_registration_order):
         types = tuple(class_lists[p][sig[p]] for p in range(arity))

@@ -55,7 +55,7 @@ def test_inheritance_dispatch():
 
 
 def test_no_match_raises_no_match_error():
-    d = Multimethod()
+    d = Multimethod(arity=1)
     d.register(int)(lambda a: a * 2)
     assert d(5) == 10
     with pytest.raises(NoMatchError, match="No key matches"):
@@ -275,8 +275,7 @@ def test_cache_invalidated_by_later_registration():
 
 
 def test_cache_invalidated_across_inherit_chain():
-    parent = Multimethod()
-    parent.register(object)(lambda x: "parent-default")
+    parent = Multimethod(lambda x: "parent-default")
     child = parent.inherit()
 
     class Node:
@@ -328,6 +327,25 @@ def test_dispatch_default_arity_ignores_keyword_only_params():
 
     assert f.registry == {object: f.__wrapped__}
     assert f(1, key="k", extra=0) == "default k"
+
+
+def test_multimethod_needs_a_default_or_an_arity():
+    with pytest.raises(TypeError, match="needs a default function or an arity"):
+        Multimethod()
+    bare = Multimethod(arity=2)
+    with pytest.raises(NoMatchError):
+        bare(1, 2)
+
+    def varargs(*args):
+        return len(args)
+
+    assert Multimethod(varargs, arity=2)(1, 2) == 2
+
+    @dispatch
+    def nullary() -> str:
+        return "default"
+
+    assert nullary() == "default"
 
 
 def test_register_rejects_another_arity_than_the_default():

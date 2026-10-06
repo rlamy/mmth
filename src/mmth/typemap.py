@@ -2,7 +2,7 @@
 
 import weakref
 from abc import get_cache_token
-from collections.abc import Iterator, MutableMapping
+from collections.abc import Iterator, Mapping, MutableMapping
 from typing import Any, Self
 
 _Signature = tuple[type, ...]
@@ -25,7 +25,7 @@ class TypeMap(MutableMapping[_Signature, Any]):
     matches position by position, each a subclass of the key's type; an
     exact key is always the most specific. It caches its results.
 
-    All keys have the same length, its `arity`, set by the first key stored.
+    All keys have the same length, its `arity`.
     """
 
     # Slots, since `lookup()` is performance-critical (see
@@ -39,8 +39,23 @@ class TypeMap(MutableMapping[_Signature, Any]):
         "__weakref__",
     )
 
-    def __init__(self) -> None:
-        """Create an empty type map."""
+    def __init__(
+        self,
+        table: Mapping[_Signature, Any] | None = None,
+        *,
+        arity: int | None = None,
+    ) -> None:
+        """Create a type map holding the keys and values of `table`.
+
+        Its `arity` is inferred from `table`'s keys; pass `arity` instead only
+        to start empty. Raise `TypeError` if there's neither, and `ValueError`
+        if the keys don't all have the same length (`arity`, if given).
+        """
+        if arity is None:
+            if not table:
+                raise TypeError("TypeMap() needs an arity, or a table to infer it from")
+            arity = len(next(iter(table)))
+        self._arity = arity
         self._table: dict[_Signature, Any] = {}
         self._cache: dict[type | _Signature, Any] = {}
         # Set once an ABC is registered, since `SomeABC.register(cls)` can
@@ -51,16 +66,8 @@ class TypeMap(MutableMapping[_Signature, Any]):
         self._dependents: weakref.WeakValueDictionary[int, TypeMap] = (
             weakref.WeakValueDictionary()
         )
-        self._arity: int | None = None
-
-    def _check_arity(self, sig: _Signature) -> None:
-        if self._arity is None:
-            self._arity = len(sig)
-        elif len(sig) != self._arity:
-            raise ValueError(
-                f"Key {sig} has {len(sig)} types, but this type map's keys "
-                f"have {self._arity}"
-            )
+        if table:
+            self.update(table)
 
     def _invalidate_cache(self) -> None:
         self._cache.clear()
@@ -111,9 +118,8 @@ class TypeMap(MutableMapping[_Signature, Any]):
         return maximal[0][1]
 
     def _miss(self, types: _Signature) -> Any:
-        arity = self.arity
-        if arity is not None and len(types) != arity:
-            raise TypeError(f"Expected {arity} types, got {types}")
+        if len(types) != self._arity:
+            raise TypeError(f"Expected {self._arity} types, got {types}")
         table = self._lookup_table()
         try:
             return table[types]
@@ -133,7 +139,11 @@ class TypeMap(MutableMapping[_Signature, Any]):
 
         Raise `ValueError` if `sig`'s length isn't this type map's `arity`.
         """
-        self._check_arity(sig)
+        if len(sig) != self._arity:
+            raise ValueError(
+                f"Key {sig} has {len(sig)} types, but this type map's keys "
+                f"have {self._arity}"
+            )
         self._table[sig] = value
         if self._abc_token is None and any(
             hasattr(t, "__abstractmethods__") for t in sig
@@ -155,7 +165,7 @@ class TypeMap(MutableMapping[_Signature, Any]):
         return len(self._table)
 
     def _empty_copy(self) -> Self:
-        return type(self)()
+        return type(self)(arity=self._arity)
 
     def __copy__(self) -> Self:
         """Return a type map with the same keys.
@@ -164,14 +174,13 @@ class TypeMap(MutableMapping[_Signature, Any]):
         """
         new = self._empty_copy()
         new._table = self._table.copy()
-        new._arity = self._arity
         if self._abc_token is not None:
             new._abc_token = get_cache_token()
         return new
 
     @property
-    def arity(self) -> int | None:
-        """Return the length of every key, or None until one is stored."""
+    def arity(self) -> int:
+        """Return the length of every key."""
         return self._arity
 
     def lookup(self, key: type | _Signature) -> Any:
@@ -180,8 +189,8 @@ class TypeMap(MutableMapping[_Signature, Any]):
         `key` is a tuple of types, or a bare type for a one-element tuple.
         Raise `TypeError` if `key` doesn't have `arity` types, `NoMatchError`
         if no key matches, and `AmbiguousMatchError` if no single matching key
-        is more specific than all the others. The result is cached, per `key`, until this type map
-        changes.
+        is more specific than all the others. The result is cached, per
+        `key`, until this type map changes.
         """
         if self._abc_token is not None and self._abc_token != get_cache_token():
             self._abc_token = get_cache_token()
@@ -201,21 +210,24 @@ class ChainTypeMap(TypeMap):
     As a mapping, it only holds its own keys; `lookup()` looks among the keys
     `parent | self`, as by `dict.__or__`, so its own keys replace equal ones,
     and the most specific of all the others wins. Its cache is invalidated
-    when the parent changes. It shares its parent's `arity`.
+    when the parent changes. It has its parent's `arity`.
     """
 
     __slots__ = ("_parent",)
 
-    def __init__(self, parent: TypeMap) -> None:
-        """Create an empty type map chained to `parent`."""
-        super().__init__()
+    def __init__(
+        self, parent: TypeMap, table: Mapping[_Signature, Any] | None = None
+    ) -> None:
+        """Create a type map chained to `parent`, holding `table`, if given.
+
+        It has `parent`'s arity, so `table` can be left out to start empty.
+        """
+        # Set first, as storing `table` invalidates the cache, which reads it.
         self._parent = parent
+        super().__init__(table, arity=parent.arity)
         parent._dependents[id(self)] = self
         if parent._abc_token is not None:
             self._abc_token = get_cache_token()
-
-    def _check_arity(self, sig: _Signature) -> None:
-        self._parent._check_arity(sig)
 
     def _invalidate_cache(self) -> None:
         # The parent may have just started watching ABCs.
@@ -228,8 +240,3 @@ class ChainTypeMap(TypeMap):
 
     def _empty_copy(self) -> Self:
         return type(self)(self._parent)
-
-    @property
-    def arity(self) -> int | None:
-        """Return the length of every key, shared with the parent."""
-        return self._parent.arity

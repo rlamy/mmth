@@ -111,26 +111,32 @@ class Multimethod:
         self,
         func: Callable[..., Any] | None = None,
         *,
+        arity: int | None = None,
         _skip: int = 0,
         _binds_class: bool = False,
     ) -> None:
         """Create a multimethod with `func` as its default implementation.
 
-        `func` is registered for `object` at every parameter, whatever its
-        annotations. A call matching no registration raises `NoMatchError`.
-        The underscored arguments are internal, set by `dispatchmethod` and
-        `inherit()`.
+        Every registration takes as many dispatched arguments as `func` has
+        positional parameters (past `self`/`cls`), and `func` is registered
+        for `object` at each of them, whatever its annotations. Pass `arity`
+        only for a multimethod without a default (where it's required), or
+        to override `func`'s, e.g. for `*args`. A call matching no
+        registration raises `NoMatchError`. The underscored arguments are internal, set by
+        `dispatchmethod` and `inherit()`.
         """
         self._skip = _skip
         self._binds_class = _binds_class
-        self._registry: TypeMap = TypeMap()
         if func is None:
+            if arity is None:
+                raise TypeError("Multimethod() needs a default function or an arity")
+            self._registry: TypeMap = TypeMap(arity=arity)
             return
         functools.update_wrapper(self, func)
         self.__isabstractmethod__ = getattr(func, "__isabstractmethod__", False)
-        arity = len(self._params(func))
-        if arity:
-            self._registry[(object,) * arity] = self._callable(func)
+        if arity is None:
+            arity = len(self._params(func))
+        self._registry = TypeMap({(object,) * arity: self._callable(func)})
 
     def _unwrap(self, func: Any) -> tuple[Callable[..., Any], int]:
         """Return `func`'s plain function, and how many leading params to skip."""
@@ -239,7 +245,11 @@ class Multimethod:
                     ...
                     return super().visit(x)
         """
-        child = type(self)(_skip=self._skip, _binds_class=self._binds_class)
+        child = type(self)(
+            arity=self._registry.arity,
+            _skip=self._skip,
+            _binds_class=self._binds_class,
+        )
         child._registry = ChainTypeMap(self._registry)
         return child
 
