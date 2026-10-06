@@ -74,6 +74,14 @@ def test_keys_all_have_the_arity_of_the_parent():
         assert exc_info.type is TypeError
 
 
+def test_keys_hold_only_classes():
+    tm = TypeMap({(Animal,): "animal"})
+    with pytest.raises(TypeError, match="other than classes"):
+        tm[("Dog",)] = "dog"
+    assert dict(tm) == {(Animal,): "animal"}
+    assert tm.lookup(Dog) == "animal"
+
+
 def test_lookup_raises_on_ambiguity():
     tm = TypeMap({(Dog,): "dog", (Pet,): "pet"})
     with pytest.raises(AmbiguousMatchError, match="Ambiguous lookup"):

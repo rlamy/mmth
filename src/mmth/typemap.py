@@ -80,10 +80,7 @@ class TypeMap(MutableMapping[_Signature, Any]):
 
     @staticmethod
     def _match_signature(sig: _Signature, types: _Signature) -> bool:
-        return all(
-            isinstance(sig_type, type) and issubclass(arg_type, sig_type)
-            for sig_type, arg_type in zip(sig, types)
-        )
+        return all(map(issubclass, types, sig))
 
     def _lookup_table(self) -> dict[_Signature, Any]:
         """Return the keys and values `lookup()` looks among."""
@@ -134,8 +131,11 @@ class TypeMap(MutableMapping[_Signature, Any]):
     def __setitem__(self, sig: _Signature, value: Any) -> None:
         """Store `value` under exactly the key `sig`.
 
-        Raise `ValueError` if `sig`'s length isn't this type map's `arity`.
+        Raise `TypeError` if `sig` holds anything but classes, and
+        `ValueError` if its length isn't this type map's `arity`.
         """
+        if not all(isinstance(t, type) for t in sig):
+            raise TypeError(f"Key {sig} holds something other than classes")
         if len(sig) != self._arity:
             raise ValueError(
                 f"Key {sig} has {len(sig)} types, but this type map's keys "
