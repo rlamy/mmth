@@ -109,6 +109,19 @@ def _describe(func: Any) -> str:
     return f"{name} at {code.co_filename}:{code.co_firstlineno}"
 
 
+def _not_a_type_hint(t: Any) -> str:
+    """Return a hint at what to dispatch on instead of `t`, if any."""
+    origin = get_origin(t)
+    if isinstance(origin, type):
+        return (
+            f" (isinstance can't check a parameterized generic's parameters; "
+            f"use {_type_name(origin)})"
+        )
+    if isinstance(t, str):
+        return " (only annotations are evaluated; pass the class itself)"
+    return ""
+
+
 def _is_function(obj: Any) -> bool:
     """Return whether `obj` can be registered as an implementation.
 
@@ -131,7 +144,7 @@ def _parse_decorator_args(
         args, func = args[:-1], args[-1]
     for t in args:
         if _classes(t) is None:
-            raise TypeError(f"{caller} expected types, got {t!r}")
+            raise TypeError(f"{caller} expected types, got {t!r}{_not_a_type_hint(t)}")
     return args, func
 
 
@@ -306,8 +319,8 @@ class Multimethod:
             if _classes(annotation) is None:
                 raise TypeError(
                     f"register() can't dispatch on parameter {p.name!r} of "
-                    f"{_describe(func)}, annotated {annotation!r}; pass the "
-                    f"types explicitly"
+                    f"{_describe(func)}, annotated {annotation!r}"
+                    f"{_not_a_type_hint(annotation)}; pass the types explicitly"
                 )
             types.append(annotation)
         return tuple(types)

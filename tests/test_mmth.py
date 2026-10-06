@@ -679,8 +679,10 @@ def test_register_rejects_non_types():
     def f(a: object) -> str:
         return "default"
 
-    with pytest.raises(TypeError, match=r"register\(\) expected types, got 42"):
+    with pytest.raises(TypeError, match=r"register\(\) expected types, got 42$"):
         f.register(42)
+    with pytest.raises(TypeError, match=r"got 'int' \(.*pass the class itself\)$"):
+        f.register("int")
 
 
 def test_register_accepts_types_outside_the_default_annotation():
@@ -804,7 +806,9 @@ def test_parameterized_generics_are_rejected():
     for annotation in (list[int], List[int], List, Callable[[], int], Literal[1]):
         with pytest.raises(TypeError, match="expected types"):
             f.register(annotation)(g)
-    with pytest.raises(TypeError, match="can't dispatch on parameter 'a'"):
+    with pytest.raises(TypeError, match=r"got list\[int\] \(.*; use list\)$"):
+        f.register(list[int])
+    with pytest.raises(TypeError, match=r"; use list\); pass the types explicitly$"):
         f.register(g)
 
 
