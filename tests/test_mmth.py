@@ -711,8 +711,13 @@ def test_register_requires_parameters_to_dispatch_on():
 
     with pytest.raises(TypeError, match="too few parameters to dispatch on"):
         f.register(h)
-    with pytest.raises(TypeError, match=r"in functools\.partial\(.*: needs 1"):
-        f.register(functools.partial(lambda: "partial"))
+
+    def g() -> str:
+        return "partial"
+
+    with pytest.raises(TypeError) as exc_info:
+        f.register(functools.partial(g))
+    assert f"in functools.partial({_located(g)}): needs 1" in str(exc_info.value)
 
 
 def test_register_errors_locate_the_implementation():

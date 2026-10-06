@@ -117,6 +117,8 @@ def _describe(func: Any) -> str:
     them apart.
     """
     func = inspect.unwrap(func)
+    if isinstance(func, functools.partial):
+        return f"functools.partial({_describe(func.func)})"
     name = getattr(func, "__qualname__", None)
     # PyPy's builtins have code, without a location.
     code: Any = getattr(func, "__code__", None)
