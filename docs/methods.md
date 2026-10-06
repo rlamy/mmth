@@ -138,6 +138,10 @@ multimethod `.register()` adds it to. Every other `Evaluator` subclass, and
 every other node type on `StrictEvaluator`, keeps using the base
 registrations unchanged.
 
+Likewise, `StrictEvaluator.visit.registry` and `StrictEvaluator.visit[Num]`
+show what its calls dispatch on: the base's registrations, except those it
+replaced, along with its own.
+
 If the attribute name differs from the base's, or the multimethod to chain
 to isn't the one plain attribute lookup would find, spell it out instead
 with `Base.visit.inherit()` (see `Multimethod.inherit`) - `inherit()` is

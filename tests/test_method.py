@@ -328,6 +328,38 @@ def test_inherit_function_takes_item_assignment():
     assert Base().visit(Num(1)) == "default"
 
 
+def test_inherit_shows_the_registrations_it_dispatches_on():
+    class Base:
+        @dispatchmethod
+        def visit(self, node):
+            return "default"
+
+        @visit.register(Num)
+        def _(self, node):
+            return "num"
+
+        @visit.register(Add)
+        def _(self, node):
+            return "add"
+
+    class Sub(Base):
+        visit = inherit()
+
+        @visit.register(Add)
+        def _(self, node):
+            return "sub add"
+
+    sub_add = Sub.visit[Add]
+    assert Sub.visit[Num] is Base.visit[Num]
+    assert sub_add is not Base.visit[Add]
+    assert dict(Sub.visit.registry) == {
+        object: Base.visit[object],
+        Num: Base.visit[Num],
+        Add: sub_add,
+    }
+    assert set(Base.visit.registry) == {object, Num, Add}
+
+
 def test_inherit_function_register_rejects_non_function_at_once():
     with pytest.raises(TypeError, match=r"register\(\) expected a function"):
         inherit().register(int)(42)

@@ -466,11 +466,13 @@ class Multimethod:
         """Return the implementation registered for exactly `types`.
 
         A single type stands for a one-element tuple. For a union, the same
-        implementation must be registered for every member. Raise `KeyError`
-        if there's no such implementation.
+        implementation must be registered for every member. Registered on
+        an `inherit()` base counts, unless replaced. Raise `KeyError` if
+        there's no such implementation.
         """
         types = _as_types("__getitem__()", types)
-        impls = [self._registry.get(sig) for sig in _expand(types)]
+        table = self._registry._lookup_table()
+        impls = [table.get(sig) for sig in _expand(types)]
         if impls[0] is not None and all(impl is impls[0] for impl in impls):
             return impls[0]
         if len(types) != self._arity:
@@ -497,10 +499,12 @@ class Multimethod:
         """Read-only mapping of the registered implementations, by signature.
 
         Keyed by a bare type for a single argument, as in
-        `functools.singledispatch`, else by a tuple of types.
+        `functools.singledispatch`, else by a tuple of types. Those of an
+        `inherit()` base are included, unless replaced, as calls see them.
         """
+        table = self._registry._lookup_table()
         return MappingProxyType(
-            {sig[0] if len(sig) == 1 else sig: f for sig, f in self._registry.items()}
+            {sig[0] if len(sig) == 1 else sig: f for sig, f in table.items()}
         )
 
     def dispatch(self, *types: _TypeSpec) -> Any:
