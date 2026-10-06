@@ -313,6 +313,21 @@ def test_inherit_function_checks_the_number_of_types_with_its_base():
         pending.__set_name__(Sub, "visit")
 
 
+def test_inherit_function_takes_item_assignment():
+    class Base:
+        @dispatchmethod
+        def visit(self, node):
+            return "default"
+
+    class Sub(Base):
+        visit = inherit()
+        visit[Num] = lambda self, node: "num"
+
+    assert Sub().visit(Num(1)) == "num"
+    assert Sub().visit(Node()) == "default"
+    assert Base().visit(Num(1)) == "default"
+
+
 def test_inherit_function_register_rejects_non_function_at_once():
     with pytest.raises(TypeError, match=r"register\(\) expected a function"):
         inherit().register(int)(42)

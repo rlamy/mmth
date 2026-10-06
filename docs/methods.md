@@ -105,8 +105,8 @@ it as `functools.singledispatchmethod` would.
 A subclass can override some implementations of a base class's
 `dispatchmethod` without touching the base class itself, with `inherit()`:
 assign it as the subclass's own attribute (under the same name the base
-class uses), then build it up with `.register(*types)` exactly like
-`dispatchmethod` itself. The subclass's multimethod dispatches on the
+class uses), then build it up with `.register(*types)` (or
+`visit[types] = impl`) exactly like `dispatchmethod` itself. The subclass's multimethod dispatches on the
 registrations `base | subclass`: a registration for the same types
 replaces the base's, and otherwise the most specific one wins, whichever
 class registered it. So registering a broader

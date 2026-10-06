@@ -203,6 +203,14 @@ def _register_with(
     return decorator(func) if func is not None else decorator
 
 
+def _as_types(caller: str, types: _TypeSpec | tuple[_TypeSpec, ...]) -> tuple[Any, ...]:
+    """Normalize a `__getitem__`/`__setitem__` type-or-tuple argument."""
+    if not isinstance(types, tuple):
+        types = (types,)
+    types, _ = _parse_decorator_args(caller, types)
+    return types
+
+
 def _expand(types: tuple[Any, ...]) -> list[tuple[type, ...]]:
     """Return the signatures of classes that type annotations `types` mean."""
     return list(itertools.product(*(_classes(t) or () for t in types)))
@@ -452,15 +460,6 @@ class Multimethod:
             child.__name__ = self.__name__
         return child
 
-    def _as_types(
-        self, caller: str, types: _TypeSpec | tuple[_TypeSpec, ...]
-    ) -> tuple[Any, ...]:
-        """Normalize a `__getitem__`/`__setitem__` type-or-tuple argument."""
-        if not isinstance(types, tuple):
-            types = (types,)
-        types, _ = _parse_decorator_args(caller, types)
-        return types
-
     def __getitem__(
         self, types: _TypeSpec | tuple[_TypeSpec, ...]
     ) -> Callable[..., Any]:
@@ -470,7 +469,7 @@ class Multimethod:
         implementation must be registered for every member. Raise `KeyError`
         if there's no such implementation.
         """
-        types = self._as_types("__getitem__()", types)
+        types = _as_types("__getitem__()", types)
         impls = [self._registry.get(sig) for sig in _expand(types)]
         if impls[0] is not None and all(impl is impls[0] for impl in impls):
             return impls[0]
@@ -490,7 +489,7 @@ class Multimethod:
 
     def __setitem__(self, types: _TypeSpec | tuple[_TypeSpec, ...], func: Any) -> None:
         """Register `func` for `types`, a single type or a tuple of them."""
-        types = self._as_types("__setitem__()", types)
+        types = _as_types("__setitem__()", types)
         self._register(types, func)
 
     @property
@@ -734,6 +733,9 @@ class _PendingInherit:
             func,
             self._decorator_types.append,
         )
+
+    def __setitem__(self, types: _TypeSpec | tuple[_TypeSpec, ...], func: Any) -> None:
+        self._registrations.append((_as_types("__setitem__()", types), func))
 
     def __set_name__(self, owner: type, name: str) -> None:
         base = next((b for b in owner.__mro__[1:] if name in vars(b)), None)
