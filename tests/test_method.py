@@ -1,6 +1,6 @@
 import pytest
 
-from mmth import Multimethod, dispatchmethod, inherit
+from mmth import AmbiguousMatchError, Multimethod, dispatchmethod, inherit
 
 
 class Node:
@@ -394,3 +394,29 @@ def test_unbound_call_lacks_an_argument_after_self():
         r"argument to dispatch on after self, got 0$",
     ):
         Handler.visit(1)
+
+
+def test_ambiguity_error_shows_where_inherited_candidates_come_from():
+    class Base:
+        @dispatchmethod
+        def visit(self, a: object, b: object):
+            return "default"
+
+        @visit.register(int, object)
+        def _(self, a, b):
+            return "int, object"
+
+    class Sub(Base):
+        visit = inherit()
+
+        @visit.register(object, int)
+        def _(self, a, b):
+            return "object, int"
+
+    with pytest.raises(AmbiguousMatchError) as exc_info:
+        Sub().visit(1, 2)
+    header, base, sub, fix = str(exc_info.value).splitlines()
+    assert header == f"{Sub.visit.__qualname__}(int, int) is ambiguous between:"
+    assert base.startswith(f"  visit(int, object): {Base.__qualname__}._ at ")
+    assert sub.startswith(f"  visit(object, int): {Sub.__qualname__}._ at ")
+    assert fix == "Register visit(int, int) to resolve it."

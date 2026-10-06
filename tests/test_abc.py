@@ -141,7 +141,7 @@ def test_dispatch_raises_ambiguous_for_two_unrelated_virtual_bases():
     def _(obj) -> str:
         return "swims"
 
-    with pytest.raises(AmbiguousMatchError, match="Ambiguous lookup"):
+    with pytest.raises(AmbiguousMatchError, match="is ambiguous between"):
         move(Duck())
 
 

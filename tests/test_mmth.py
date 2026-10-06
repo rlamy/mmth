@@ -156,7 +156,54 @@ def test_ambiguity_detection():
 
     with pytest.raises(AmbiguousMatchError) as exc_info:
         f(Dog(), Dog())
-    assert "Ambiguous lookup" in str(exc_info.value)
+    assert "is ambiguous between" in str(exc_info.value)
+
+
+def _located(func) -> str:
+    return f"{func.__qualname__} at {__file__}:{func.__code__.co_firstlineno}"
+
+
+def test_ambiguity_error_locates_candidates_and_suggests_a_fix():
+    class A:
+        pass
+
+    class B(A):
+        pass
+
+    class Left:
+        pass
+
+    class Right:
+        pass
+
+    class Both(Left, Right):
+        pass
+
+    @dispatch
+    def f(a, b, c) -> str:
+        return "default"
+
+    @f.register(B, A, Left)
+    def first(a, b, c) -> str:
+        return "B, A, Left"
+
+    @f.register(A, B, Right)
+    def second(a, b, c) -> str:
+        return "A, B, Right"
+
+    with pytest.raises(AmbiguousMatchError) as exc_info:
+        f(B(), B(), Both())
+    assert str(exc_info.value) == "\n".join(
+        [
+            f"{f.__qualname__}(B, B, Both) is ambiguous between:",
+            f"  f(B, A, Left): {_located(first)}",
+            f"  f(A, B, Right): {_located(second)}",
+            "Register f(B, B, Both) to resolve it.",
+        ]
+    )
+    assert exc_info.value.types == (B, B, Both)
+    assert [impl for _, impl in exc_info.value.candidates] == [first, second]
+    assert exc_info.value.__suppress_context__
 
 
 def test_default_fallback_no_registrations():

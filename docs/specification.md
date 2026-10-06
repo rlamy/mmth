@@ -168,7 +168,7 @@ like `functools.singledispatch` and `functools.singledispatchmethod`, except:
 
 - **Ties raise instead of following the MRO**: given `class C(A, B)` with
   implementations for both `A` and `B`, functools picks `A` (first in
-  `C.__mro__`), while mmth raises `AmbiguousMatchError("Ambiguous lookup ...")`. The
+  `C.__mro__`), while mmth raises `AmbiguousMatchError`, listing both. The
   same applies to a real base class against an unrelated ABC that `C`
   implicitly satisfies. (Where functools does raise on ambiguity between
   ABCs, it raises `RuntimeError`; mmth raises `AmbiguousMatchError`.)
@@ -272,8 +272,10 @@ def _(a: Animal, d: Dog) -> str:
 
 # ERROR: Ambiguous - neither is more specialized than the other
 f(Dog(), Dog())
-# AmbiguousMatchError: Ambiguous lookup for (Dog, Dog): matches (Dog, Animal),
-# (Animal, Dog), none more specific than the others
+# AmbiguousMatchError: f(Dog, Dog) is ambiguous between:
+#   f(Dog, Animal): _ at example.py:11
+#   f(Animal, Dog): _ at example.py:15
+# Register f(Dog, Dog) to resolve it.
 ```
 
 ## Error Cases

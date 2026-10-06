@@ -324,7 +324,7 @@ def test_multiple_inheritance_differs_from_functools():
 
     reference, f = _both(build)
     assert reference(C()) == "A"
-    with pytest.raises(AmbiguousMatchError, match="Ambiguous lookup"):
+    with pytest.raises(AmbiguousMatchError, match="is ambiguous between"):
         f(C())
 
 

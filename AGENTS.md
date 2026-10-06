@@ -287,7 +287,7 @@ def test_ambiguity_detection():
     with pytest.raises(AmbiguousMatchError) as exc_info:
         f(Dog(), Dog())
     
-    assert "Ambiguous lookup" in str(exc_info.value)
+    assert "is ambiguous between" in str(exc_info.value)
 ```
 
 ---

@@ -1,4 +1,5 @@
 import itertools
+import re
 
 import pytest
 from hypothesis import given
@@ -37,8 +38,11 @@ def test_dispatch_handles_multiple_inheritance(data, reverse_registration_order)
             assert mm(instance) == maximal[0]
         else:
             assert len(maximal) > 1
-            with pytest.raises(AmbiguousMatchError, match="Ambiguous lookup"):
+            with pytest.raises(AmbiguousMatchError, match="is ambiguous between") as e:
                 mm(instance)
+            assert sorted(impl(None) for _, impl in e.value.candidates) == sorted(
+                maximal
+            )
 
 
 @st.composite
@@ -112,5 +116,15 @@ def test_multi_arg_dispatch_handles_ambiguity(data, reverse_registration_order):
             assert mm(*instances) == maximal[0]
         else:
             assert len(maximal) > 1
-            with pytest.raises(AmbiguousMatchError, match="Ambiguous lookup"):
+            with pytest.raises(AmbiguousMatchError, match="is ambiguous between") as e:
                 mm(*instances)
+            assert sorted(impl() for _, impl in e.value.candidates) == sorted(maximal)
+            # The suggested fix resolves the ambiguity.
+            fix = re.search(
+                r"^Register \w+\((.*)\) to resolve it\.$", str(e.value), re.M
+            )
+            by_name = [{cls.__name__: cls for cls in cl} for cl in class_lists]
+            fix_types = [by_name[p][n] for p, n in enumerate(fix[1].split(", "))]
+            child = mm.inherit()
+            child.register(*fix_types)(lambda *args: "fix")
+            assert child(*instances) == "fix"

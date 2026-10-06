@@ -19,7 +19,14 @@ from typing import (
     overload,
 )
 
-from mmth.typemap import ChainTypeMap, NoMatchError, TypeMap, _count, _type_name
+from mmth.typemap import (
+    AmbiguousMatchError,
+    ChainTypeMap,
+    NoMatchError,
+    TypeMap,
+    _count,
+    _type_name,
+)
 
 # Not the implementation's own type: implementations are all named `_`, so
 # type checkers would treat a subclass's `_` as overriding its base's.
@@ -408,9 +415,13 @@ class Multimethod:
         """Return how error messages name this multimethod."""
         return getattr(self, "__qualname__", type(self).__name__)
 
-    def _format_call(self, types: tuple[Any, ...]) -> str:
-        """Return how error messages show a call with arguments of `types`."""
-        return f"{self._name()}({', '.join(_type_name(t) for t in types)})"
+    def _format_call(self, types: tuple[Any, ...], short: bool = False) -> str:
+        """Return how error messages show a call with arguments of `types`.
+
+        With `short`, name this multimethod without its qualname's prefix.
+        """
+        name = self._name().rpartition(".")[2] if short else self._name()
+        return f"{name}({', '.join(_type_name(t) for t in types)})"
 
     def _no_match_error(self, types: tuple[type, ...]) -> str:
         """Describe a call matching no registered signature."""
@@ -422,6 +433,30 @@ class Multimethod:
         if len(sigs) > _MAX_LISTED:
             listed += f", and {len(sigs) - _MAX_LISTED} more"
         return f"{message}; registered: {listed}"
+
+    def _ambiguity_error(
+        self, types: tuple[type, ...], candidates: tuple[tuple[Any, Any], ...]
+    ) -> str:
+        """Describe a call matching several signatures, none the most specific.
+
+        Suggest registering, at each position, the most specific of the
+        candidates' types, if any, else the argument's own: more specific
+        than every candidate, it resolves the ambiguity.
+        """
+        lines = [f"{self._format_call(types)} is ambiguous between:"]
+        lines += [
+            f"  {self._format_call(sig, short=True)}: {_describe(impl)}"
+            for sig, impl in candidates
+        ]
+        fix = []
+        for i, t in enumerate(types):
+            column = [sig[i] for sig, _ in candidates]
+            fix.append(
+                next((c for c in column if all(issubclass(c, o) for o in column)), t)
+            )
+        fix_call = self._format_call(tuple(fix), short=True)
+        lines.append(f"Register {fix_call} to resolve it.")
+        return "\n".join(lines)
 
     def _too_few_args_error(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
         """Describe a call with too few positional arguments to dispatch on."""
@@ -455,6 +490,12 @@ class Multimethod:
             return TypeError(self._too_few_args_error(args, kwargs))
         if isinstance(error, NoMatchError):
             return NoMatchError(self._no_match_error(error.types), error.types)
+        if isinstance(error, AmbiguousMatchError):
+            return AmbiguousMatchError(
+                self._ambiguity_error(error.types, error.candidates),
+                error.types,
+                error.candidates,
+            )
         return None
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
