@@ -500,3 +500,19 @@ def test_inherited_multimethod_assigned_later_takes_the_base_name():
     Sub.visit = Base.visit.inherit()
     with pytest.raises(TypeError, match=r"^visit\(\) takes 1 positional argument"):
         Sub().visit()
+
+
+def test_inherit_says_when_the_base_attribute_isnt_a_multimethod():
+    class Base:
+        def visit(self, node):
+            return "plain"
+
+    class Sub(Base):
+        pass
+
+    pending = inherit()
+    with pytest.raises(TypeError) as exc_info:
+        pending.__set_name__(Sub, "visit")
+    assert str(exc_info.value) == (
+        "inherit() found Base.visit, but it's a function, not a Multimethod"
+    )

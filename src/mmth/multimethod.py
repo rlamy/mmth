@@ -675,15 +675,17 @@ class _PendingInherit:
         )
 
     def __set_name__(self, owner: type, name: str) -> None:
-        parent = None
-        for base in owner.__mro__[1:]:
-            if name in vars(base):
-                parent = vars(base)[name]
-                break
-        if not isinstance(parent, Multimethod):
+        base = next((b for b in owner.__mro__[1:] if name in vars(b)), None)
+        if base is None:
             raise TypeError(
                 f"inherit() found no base class of {owner.__name__} "
                 f"defining a Multimethod named {name!r}"
+            )
+        parent = vars(base)[name]
+        if not isinstance(parent, Multimethod):
+            raise TypeError(
+                f"inherit() found {base.__name__}.{name}, but it's a "
+                f"{type(parent).__name__}, not a Multimethod"
             )
         dispatcher = parent.inherit()
         # Named first, for errors from the registrations.
