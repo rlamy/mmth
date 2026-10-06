@@ -17,7 +17,9 @@ def _maximal_registered_ancestors(node, registered, ancestors):
     """
     matching = [r for r in registered if r in ancestors[node]]
     return [
-        r for r in matching if not any(r2 != r and r in ancestors[r2] for r2 in matching)
+        r
+        for r in matching
+        if not any(r2 != r and r in ancestors[r2] for r2 in matching)
     ]
 
 
@@ -92,7 +94,8 @@ def _maximal_registered_signatures(query, registered, ancestors_lists):
         sig
         for sig in matching
         if not any(
-            other != sig and _dominates(other, sig, ancestors_lists) for other in matching
+            other != sig and _dominates(other, sig, ancestors_lists)
+            for other in matching
         )
     ]
 
