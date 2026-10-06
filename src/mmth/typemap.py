@@ -132,6 +132,7 @@ class TypeMap(MutableMapping[_Signature, Any]):
             self.update(table)
 
     def _invalidate_cache(self) -> None:
+        """Clear the cache, and that of every type map depending on this one."""
         self._cache.clear()
         for dependent in self._dependents.values():
             dependent._invalidate_cache()
@@ -143,6 +144,7 @@ class TypeMap(MutableMapping[_Signature, Any]):
 
     @staticmethod
     def _match_signature(sig: _Signature, types: _Signature) -> bool:
+        """Return whether `types` match key `sig`, each a subclass of its type."""
         return all(map(issubclass, types, sig))
 
     def _lookup_table(self) -> dict[_Signature, Any]:
@@ -184,6 +186,7 @@ class TypeMap(MutableMapping[_Signature, Any]):
         return maximal[0][1]
 
     def _miss(self, types: _Signature) -> Any:
+        """Look up `types` past the cache: exact match, else most specific."""
         if len(types) != self._arity:
             raise TypeError(
                 f"Expected {_count(self._arity, 'type')}, got {len(types)}: "

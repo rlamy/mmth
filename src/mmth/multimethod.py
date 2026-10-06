@@ -746,8 +746,11 @@ class _PendingInherit:
         self._decorator_types: list[tuple[Any, ...]] = []
 
     def register(self, *types: Any, func: Any = None) -> Any:
-        # Annotations, and how many types there are, are only checked once
-        # `__set_name__` has the real multimethod (and its `_skip`).
+        """Collect a registration, as `Multimethod.register()` takes it.
+
+        Annotations, and how many types there are, are only checked once
+        `__set_name__` has the real multimethod (and its `_skip`).
+        """
         return _register_with(
             lambda types, func: self._registrations.append((types, func)),
             types,
@@ -756,9 +759,11 @@ class _PendingInherit:
         )
 
     def __setitem__(self, types: _TypeSpec | tuple[_TypeSpec, ...], func: Any) -> None:
+        """Collect a registration of `func` for `types`."""
         self._registrations.append((_as_types("__setitem__()", types), func))
 
     def __set_name__(self, owner: type, name: str) -> None:
+        """Replace this with the base multimethod's child, registered on."""
         base = next((b for b in owner.__mro__[1:] if name in vars(b)), None)
         if base is None:
             raise TypeError(
