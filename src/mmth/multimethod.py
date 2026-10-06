@@ -309,11 +309,7 @@ class Multimethod:
         sigs = _expand(types)
         if len(sigs) != 1:
             raise TypeError(f"dispatch() expected one class per argument, got {types}")
-        arg_types = sigs[0]
-        key: type | tuple[type, ...] = (
-            arg_types[0] if len(arg_types) == 1 else arg_types
-        )
-        return self._registry.lookup(key)
+        return self._registry.lookup(sigs[0])
 
     def _callable(self, func: Any) -> Any:
         """Adapt `func` to be called with this multimethod's own arguments.
