@@ -142,7 +142,7 @@ class Multimethod:
         functools.update_wrapper(self, func)
         self.__isabstractmethod__ = getattr(func, "__isabstractmethod__", False)
         if arity is None:
-            params = self._params(func)
+            _, params = self._params(func)
             if params is None:
                 raise TypeError(
                     f"Multimethod() can't read the signature of {func!r} to "
@@ -159,19 +159,24 @@ class Multimethod:
             return func.__func__, 1
         return func, self._skip
 
-    def _params(self, func: Any) -> list[inspect.Parameter] | None:
-        """Return `func`'s positional parameters past `self`/`cls`.
+    def _params(
+        self, func: Any
+    ) -> tuple[Callable[..., Any], list[inspect.Parameter] | None]:
+        """Return `func`'s plain function, and its positional params past `self`/`cls`.
 
         Only positional arguments are dispatched on, so keyword-only
-        parameters and `**kwargs` are left out. Return None if `func` has
-        no signature to read.
+        parameters and `**kwargs` are left out. The params are None if
+        `func` has no signature to read.
         """
         func, skip = self._unwrap(func)
         try:
             params = list(inspect.signature(func).parameters.values())[skip:]
         except (ValueError, TypeError):
-            return None
-        return [p for p in params if p.kind not in (p.KEYWORD_ONLY, p.VAR_KEYWORD)]
+            return func, None
+        positional = [
+            p for p in params if p.kind not in (p.KEYWORD_ONLY, p.VAR_KEYWORD)
+        ]
+        return func, positional
 
     def _param_types(self, func: Any) -> tuple[Any, ...]:
         """Infer a registry key from `func`'s annotations, past `self`/`cls`.
@@ -179,30 +184,28 @@ class Multimethod:
         Raise `TypeError` for a missing annotation, or one that can't be
         dispatched on.
         """
-        params = self._params(func) or []
-        func, _ = self._unwrap(func)
+        func, params = self._params(func)
         try:
             hints = get_type_hints(func)
         except NameError:  # a forward reference that doesn't resolve yet
             hints = {}
         types = []
-        for p in params:
+        for p in params or ():
             annotation = hints.get(p.name, p.annotation)
-            # `Parameter.empty` (no annotation) is itself a class
-            if annotation is not p.empty and _classes(annotation) is not None:
-                types.append(annotation)
-            elif annotation is p.empty:
+            # Checked first, since `Parameter.empty` is itself a class.
+            if annotation is p.empty:
                 raise TypeError(
                     f"register() found no type annotation on parameter "
                     f"{p.name!r} of {func.__qualname__}; annotate it or pass "
                     f"the types explicitly"
                 )
-            else:
+            if _classes(annotation) is None:
                 raise TypeError(
                     f"register() can't dispatch on parameter {p.name!r} of "
                     f"{func.__qualname__}, annotated {annotation!r}; pass the "
                     f"types explicitly"
                 )
+            types.append(annotation)
         if not types:
             raise TypeError(
                 f"register() found no parameters to dispatch on in "
