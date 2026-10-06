@@ -15,13 +15,13 @@ versions. Re-run `uv lock` and commit the updated `uv.lock` whenever
 
 ## Running CI checks locally
 
-CI runs the test suite on Python 3.11-3.14 and PyPy 3.11, plus a lint job,
-via [tox](https://tox.wiki) (using the [tox-uv](https://github.com/tox-dev/tox-uv)
+CI runs the test suite on Python 3.11-3.14 and PyPy 3.11, plus lint and
+docs jobs, via [tox](https://tox.wiki) (using the [tox-uv](https://github.com/tox-dev/tox-uv)
 plugin, so tox itself uses uv to create envs and can fetch missing
 interpreters). To run the exact same checks locally:
 
 ```bash
-uv run tox            # test envs for every interpreter tox/uv can find or fetch, + lint
+uv run tox            # test envs for every interpreter tox/uv can find or fetch, + lint, docs
 uv run tox -e py312   # test a single interpreter
 uv run tox -e lint    # lint only
 ```

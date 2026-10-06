@@ -10,7 +10,7 @@ Guidelines for agents working in this repository.
 
 - **Python**: >= 3.11
 - **License**: MIT
-- **Repository**: https://github.com/yourusername/mmth
+- **Repository**: https://github.com/rlamy/mmth
 
 ---
 
@@ -89,15 +89,16 @@ pyright src/
 ### CI (GitHub Actions)
 
 CI (`.github/workflows/ci.yml`) runs tests on Python 3.11, 3.12, 3.13, 3.14,
-and PyPy 3.11, plus a separate `ruff check` lint job. Each job installs uv,
-has uv fetch the matrix interpreter (`uv python install ...`), and runs
-tests through `tox` (`tox.ini`, using the `tox-uv` plugin) so the same
-commands reproduce locally:
+and PyPy 3.11, plus separate `ruff check` lint and `mkdocs build --strict`
+docs jobs. Each job installs uv, has uv fetch the matrix interpreter
+(`uv python install ...`), and runs through `tox` (`tox.ini`, using the
+`tox-uv` plugin) so the same commands reproduce locally:
 
 ```bash
-uv run tox            # test envs for every interpreter tox/uv can find or fetch, + lint
+uv run tox            # test envs for every interpreter tox/uv can find or fetch, + lint, docs
 uv run tox -e py313    # test a single interpreter
 uv run tox -e lint     # lint only
+uv run tox -e docs     # docs build only
 uv run tox -e benchmark  # performance benchmarks (not part of the default envlist)
 ```
 
@@ -330,7 +331,7 @@ mmth/
 ├── pyproject.toml        # Project config
 ├── uv.lock               # Locked dependency versions (uv)
 ├── .python-version       # Default interpreter pin (uv)
-├── tox.ini               # Test/lint envs (used locally and in CI)
+├── tox.ini               # Test/lint/docs envs (used locally and in CI)
 ├── docs/                 # MkDocs sources (spec, methods, performance, API reference, development)
 ├── mkdocs.yml            # MkDocs Material + mkdocstrings config
 ├── .readthedocs.yaml     # Read the Docs build config
