@@ -104,37 +104,30 @@ def test_lookup_merges_parent_keys_with_own():
         child.lookup(PetDog)
 
 
-def test_lookup_adapts_once_per_looked_up_types():
-    made = []
-    tm = TypeMap(adapt=lambda value: made.append(value) or [value])
-    tm[(Animal,)] = "animal"
-    dog, again, pet_dog = tm.lookup(Dog), tm.lookup(Dog), tm.lookup(PetDog)
-    assert dog is again
-    assert dog is not pet_dog
-    assert made == ["animal", "animal"]
-
-
-def test_lookup_adapts_values_but_mapping_does_not():
-    tm = TypeMap(adapt=str.upper)
-    tm[(Animal,)] = "animal"
-    assert tm.lookup(Dog) == "ANIMAL"
-    assert tm[(Animal,)] == "animal"
-
-
 def test_lookup_caches_until_the_type_map_changes():
-    calls = []
+    checks = []
 
-    def adapt(value):
-        calls.append(value)
-        return value
+    class Counting(type):
+        def __subclasscheck__(cls, subclass):
+            checks.append(subclass)
+            return super().__subclasscheck__(subclass)
 
-    tm = TypeMap(adapt=adapt)
-    tm[(Animal,)] = "animal"
-    assert tm.lookup(Dog) == tm.lookup(Dog) == "animal"
-    assert calls == ["animal"]
-    tm[(Dog,)] = "dog"
-    assert tm.lookup(Dog) == "dog"
-    assert calls == ["animal", "dog"]
+    class Base(metaclass=Counting):
+        pass
+
+    class Leaf(Base):
+        pass
+
+    tm = TypeMap()
+    tm[(Base,)] = "base"
+    assert tm.lookup(Leaf) == "base"
+    assert checks
+    checks.clear()
+    assert tm.lookup(Leaf) == "base"
+    assert not checks
+    tm[(object,)] = "object"
+    assert tm.lookup(Leaf) == "base"
+    assert checks
 
 
 def test_delitem_removes_only_exact_own_keys():
@@ -191,10 +184,10 @@ def test_children_watch_abcs_once_their_parent_does():
     assert grandchild.lookup(Dog) == "walker"
 
 
-def test_copy_is_independent_but_keeps_parent_and_adapt():
+def test_copy_is_independent_but_keeps_parent():
     parent = TypeMap()
     parent[(object,)] = "object"
-    tm = ChainTypeMap(parent, adapt=str.upper)
+    tm = ChainTypeMap(parent)
     tm[(Animal,)] = "animal"
     child = ChainTypeMap(tm)
     assert child.lookup(Dog) == "animal"
@@ -204,13 +197,13 @@ def test_copy_is_independent_but_keeps_parent_and_adapt():
     del clone[(Animal,)]
     assert dict(tm) == {(Animal,): "animal"}
     assert dict(clone) == {(Dog,): "dog"}
-    assert tm.lookup(Dog) == "ANIMAL"
+    assert tm.lookup(Dog) == "animal"
     assert child.lookup(Dog) == "animal"
-    assert clone.lookup(PetDog) == "DOG"
-    assert clone.lookup(Animal) == "OBJECT"
+    assert clone.lookup(PetDog) == "dog"
+    assert clone.lookup(Animal) == "object"
 
     parent[(Animal,)] = "parent animal"
-    assert clone.lookup(Animal) == "PARENT ANIMAL"
+    assert clone.lookup(Animal) == "parent animal"
 
 
 def test_copy_keeps_watching_abcs():

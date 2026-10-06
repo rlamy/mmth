@@ -3,7 +3,7 @@
 import weakref
 from abc import get_cache_token
 from collections.abc import Iterator, MutableMapping
-from typing import Any, Callable, Self
+from typing import Any, Self
 
 _Signature = tuple[type, ...]
 _MISSING: Any = object()
@@ -36,18 +36,11 @@ class TypeMap(MutableMapping[_Signature, Any]):
         "_abc_token",
         "_dependents",
         "_arity",
-        "_adapt",
         "__weakref__",
     )
 
-    def __init__(self, *, adapt: Callable[[Any], Any] | None = None) -> None:
-        """Create an empty type map.
-
-        `lookup()` passes whatever it finds through `adapt`, if given. Since
-        `lookup()` caches by the types looked up, not by the key they
-        matched, `adapt` runs once per distinct looked-up types: `list` and
-        `tuple` both matching `(Sequence,)` get separately adapted values.
-        """
+    def __init__(self) -> None:
+        """Create an empty type map."""
         self._table: dict[_Signature, Any] = {}
         self._cache: dict[type | _Signature, Any] = {}
         # Set once an ABC is registered, since `SomeABC.register(cls)` can
@@ -59,7 +52,6 @@ class TypeMap(MutableMapping[_Signature, Any]):
             weakref.WeakValueDictionary()
         )
         self._arity: int | None = None
-        self._adapt = adapt
 
     def _check_arity(self, sig: _Signature) -> None:
         if self._arity is None:
@@ -124,12 +116,13 @@ class TypeMap(MutableMapping[_Signature, Any]):
             raise TypeError(f"Expected {arity} types, got {types}")
         table = self._lookup_table()
         try:
-            value = table[types]
+            return table[types]
         except KeyError:
-            value = self._find_most_specialized(table, types)
+            pass
+        value = self._find_most_specialized(table, types)
         if value is _MISSING:
             raise NoMatchError(f"No key matches types {types}")
-        return value if self._adapt is None else self._adapt(value)
+        return value
 
     def __getitem__(self, sig: _Signature) -> Any:
         """Return the value stored under exactly the key `sig`."""
@@ -162,10 +155,10 @@ class TypeMap(MutableMapping[_Signature, Any]):
         return len(self._table)
 
     def _empty_copy(self) -> Self:
-        return type(self)(adapt=self._adapt)
+        return type(self)()
 
     def __copy__(self) -> Self:
-        """Return a type map with the same keys and adapt.
+        """Return a type map with the same keys.
 
         The copy is independent: changing either one leaves the other as is.
         """
@@ -213,14 +206,9 @@ class ChainTypeMap(TypeMap):
 
     __slots__ = ("_parent",)
 
-    def __init__(
-        self,
-        parent: TypeMap,
-        *,
-        adapt: Callable[[Any], Any] | None = None,
-    ) -> None:
+    def __init__(self, parent: TypeMap) -> None:
         """Create an empty type map chained to `parent`."""
-        super().__init__(adapt=adapt)
+        super().__init__()
         self._parent = parent
         parent._dependents[id(self)] = self
         if parent._abc_token is not None:
@@ -239,7 +227,7 @@ class ChainTypeMap(TypeMap):
         return self._parent._lookup_table() | self._table
 
     def _empty_copy(self) -> Self:
-        return type(self)(self._parent, adapt=self._adapt)
+        return type(self)(self._parent)
 
     @property
     def arity(self) -> int | None:

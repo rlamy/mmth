@@ -167,6 +167,10 @@ like `functools.singledispatch` and `functools.singledispatchmethod`, except:
   ordinary `dispatchmethod` can only be called through an instance; a
   `dispatchmethod` that is itself a `classmethod`/`staticmethod` works
   through either, as in functools.
+- **`classmethod`/`staticmethod` implementations are stored adapted**:
+  `registry` and `func[types]` hold a plain function that takes the
+  multimethod's own arguments, not the `classmethod`/`staticmethod` object
+  functools keeps.
 
 ## Examples
 

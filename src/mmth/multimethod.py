@@ -123,15 +123,14 @@ class Multimethod:
         """
         self._skip = _skip
         self._binds_class = _binds_class
+        self._registry: TypeMap = TypeMap()
         if func is None:
-            self._registry: TypeMap = TypeMap(adapt=self._callable)
             return
         functools.update_wrapper(self, func)
         self.__isabstractmethod__ = getattr(func, "__isabstractmethod__", False)
-        self._registry = TypeMap(adapt=self._callable)
         arity = len(self._params(func))
         if arity:
-            self._registry[(object,) * arity] = func
+            self._registry[(object,) * arity] = self._callable(func)
 
     def _unwrap(self, func: Any) -> tuple[Callable[..., Any], int]:
         """Return `func`'s plain function, and how many leading params to skip."""
@@ -192,8 +191,9 @@ class Multimethod:
         return tuple(types)
 
     def _register(self, types: tuple[Any, ...], func: Any) -> None:
+        impl = self._callable(func)
         for sig in _expand(types or self._param_types(func)):
-            self._registry[sig] = func
+            self._registry[sig] = impl
 
     # The types-first order matters: a type is itself callable, so
     # `register(int)` would otherwise match the bare-decorator overload.
@@ -240,7 +240,7 @@ class Multimethod:
                     return super().visit(x)
         """
         child = type(self)(_skip=self._skip, _binds_class=self._binds_class)
-        child._registry = ChainTypeMap(self._registry, adapt=child._callable)
+        child._registry = ChainTypeMap(self._registry)
         return child
 
     def _as_types(
@@ -300,7 +300,8 @@ class Multimethod:
 
         For a method, those start with `self`/`cls`: a `staticmethod` drops
         it, and a `classmethod` gets the instance's class in its place (or
-        the class itself, already, for a `classmethod` dispatchmethod).
+        the class itself, already, for a `classmethod` dispatchmethod). The
+        registry stores the result, so calls need no adapting.
         """
         if isinstance(func, staticmethod):
             static = func.__func__
