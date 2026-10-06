@@ -691,8 +691,19 @@ class Multimethod:
         So that a subclass's `inherit()`ed multimethod is named in errors.
         """
         if "__qualname__" not in vars(self):
+            self.__module__ = owner.__module__
             self.__name__ = name
             self.__qualname__ = f"{owner.__qualname__}.{name}"
+
+    def __reduce__(self) -> str:
+        """Pickle by reference, as a function is: by module and qualname.
+
+        Raise `TypeError` for one without a name, unless set as a class
+        attribute.
+        """
+        if "__qualname__" not in vars(self):
+            raise TypeError(f"cannot pickle {self._name()}: it has no qualname")
+        return self.__qualname__
 
     def __get__(self, instance: object | None, owner: type | None = None) -> Any:
         """Bind to `instance` as a method, or to `owner` for a classmethod."""

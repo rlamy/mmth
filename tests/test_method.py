@@ -1,3 +1,5 @@
+import pickle
+
 import pytest
 
 from mmth import AmbiguousMatchError, Multimethod, dispatchmethod, inherit
@@ -532,3 +534,31 @@ def test_inherit_says_when_the_base_attribute_isnt_a_multimethod():
     assert str(exc_info.value) == (
         "inherit() found Base.visit, but it's a function, not a Multimethod"
     )
+
+
+class Pickled:
+    @dispatchmethod
+    def visit(self, node):
+        return "default"
+
+    @visit.register(Num)
+    def _(self, node):
+        return "num"
+
+    unnamed = Multimethod(arity=1)
+
+
+class PickledSub(Pickled):
+    visit = inherit()
+
+    @visit.register(Add)
+    def _(self, node):
+        return "add"
+
+
+def test_dispatchmethod_pickles_by_reference():
+    for multimethod in (Pickled.visit, PickledSub.visit, Pickled.unnamed):
+        assert pickle.loads(pickle.dumps(multimethod)) is multimethod
+    bound = pickle.loads(pickle.dumps(PickledSub().visit))
+    assert bound(Num(1)) == "num"
+    assert bound(Add(Num(1), Num(2))) == "add"

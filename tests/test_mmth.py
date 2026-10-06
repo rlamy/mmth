@@ -1,4 +1,5 @@
 import functools
+import pickle
 import re
 import sys
 from collections.abc import Iterable, Sized
@@ -1071,3 +1072,19 @@ def test_register_rejects_unresolved_lazy_annotation():
     assert f(Later()) == "g"
     f.register(h)
     assert f(None) == "h"
+
+
+@dispatch
+def module_level(a) -> str:
+    return "default"
+
+
+@module_level.register(int)
+def _(a) -> str:
+    return "int"
+
+
+def test_multimethod_pickles_by_reference():
+    assert pickle.loads(pickle.dumps(module_level)) is module_level
+    with pytest.raises(TypeError, match="cannot pickle Multimethod: it has no "):
+        pickle.dumps(Multimethod(arity=1))

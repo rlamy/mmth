@@ -161,6 +161,10 @@ As with `functools.singledispatch`:
 - `func.registry` is a read-only mapping of every registered signature to its
   implementation, keyed by a bare type for a single argument, else a tuple.
 
+A multimethod pickles by reference, as a function does: by its module and
+qualified name, so one defined at module level or as a class attribute
+unpickles as itself.
+
 Underneath, the implementations live in a `mmth.TypeMap`, a mutable mapping
 of exactly the signatures registered on it (so `del typemap[sig]`
 unregisters `sig`), whose `lookup(types)` returns, cached, what a call
