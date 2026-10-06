@@ -40,11 +40,6 @@ class TypeMap(MutableMapping[_Signature, Any]):
         "__weakref__",
     )
 
-    # Formatted with `types`; a subclass can reword them for its own domain.
-    _no_match_message = "No key matches types {types}"
-    _ambiguous_message = "Ambiguous lookup for types {types}: matches several keys"
-    _arity_message = "Expected {arity} types, got {types}"
-
     def __init__(self, *, adapt: Callable[[Any], Any] | None = None) -> None:
         """Create an empty type map.
 
@@ -118,20 +113,22 @@ class TypeMap(MutableMapping[_Signature, Any]):
             )
         ]
         if len(maximal) > 1:
-            raise AmbiguousMatchError(self._ambiguous_message.format(types=types))
+            raise AmbiguousMatchError(
+                f"Ambiguous lookup for types {types}: matches several keys"
+            )
         return maximal[0][1]
 
     def _miss(self, types: _Signature) -> Any:
         arity = self.arity
         if arity is not None and len(types) != arity:
-            raise TypeError(self._arity_message.format(arity=arity, types=types))
+            raise TypeError(f"Expected {arity} types, got {types}")
         table = self._lookup_table()
         try:
             value = table[types]
         except KeyError:
             value = self._find_most_specialized(table, types)
         if value is _MISSING:
-            raise NoMatchError(self._no_match_message.format(types=types))
+            raise NoMatchError(f"No key matches types {types}")
         return value if self._adapt is None else self._adapt(value)
 
     def __getitem__(self, sig: _Signature) -> Any:
