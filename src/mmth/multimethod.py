@@ -476,7 +476,9 @@ class Multimethod:
         """
         types = _as_types("__getitem__()", types)
         table = self._registry._lookup_table()
-        impls = [table.get(sig) for sig in _expand(types)]
+        impls: list[Callable[..., Any] | None] = [
+            table.get(sig) for sig in _expand(types)
+        ]
         if impls[0] is not None and all(impl is impls[0] for impl in impls):
             return impls[0]
         if len(types) != self._arity:
