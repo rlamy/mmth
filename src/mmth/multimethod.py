@@ -545,10 +545,12 @@ class Multimethod:
 
     def _too_few_args_error(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
         """Describe a call with too few positional arguments to dispatch on."""
-        after_self = " after self" if self._skip else ""
+        after = ""
+        if self._skip:
+            after = " after cls" if self._binds_class else " after self"
         message = (
             f"{self._name()}() takes {_count(self._arity, 'positional argument')}"
-            f" to dispatch on{after_self}, got {max(len(args) - self._skip, 0)}"
+            f" to dispatch on{after}, got {max(len(args) - self._skip, 0)}"
         )
         default = getattr(self, "__wrapped__", None)
         if default is None:

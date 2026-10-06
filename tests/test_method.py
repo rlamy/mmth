@@ -455,3 +455,16 @@ def test_inherit_registration_errors_name_the_subclass_multimethod():
         TypeError, match=r"for visit\(int, int\): .*Sub\.visit dispatches"
     ):
         pending.__set_name__(Sub, "visit")
+
+
+def test_classmethod_call_lacks_an_argument_after_cls():
+    class Handler:
+        @dispatchmethod
+        @classmethod
+        def visit(cls, node: object):
+            return "default"
+
+    with pytest.raises(
+        TypeError, match=r"to dispatch on after cls, got 0; pass 'node'"
+    ):
+        Handler.visit(node=1)
