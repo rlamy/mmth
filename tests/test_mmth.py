@@ -451,8 +451,12 @@ def test_multimethod_needs_a_default_or_an_arity():
     def varargs(*args):
         return len(args)
 
-    with pytest.raises(TypeError, match=r"takes \*args; pass arity"):
+    with pytest.raises(TypeError) as exc_info:
         dispatch(varargs)
+    assert str(exc_info.value) == (
+        f"can't infer the arity of {_located(varargs)}, which takes *args; pass "
+        f"arity explicitly"
+    )
     assert Multimethod(varargs, arity=2)(1, 2, 3) == 3
 
     def opaque(*args):

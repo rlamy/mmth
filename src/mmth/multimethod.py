@@ -224,13 +224,13 @@ class Multimethod:
         _, params = self._params(func)
         if params is None:
             raise TypeError(
-                f"Multimethod() can't read the signature of {func!r} to "
-                f"infer its arity; pass arity explicitly"
+                f"can't read the signature of {_describe(func)} to infer its "
+                f"arity; pass arity explicitly"
             )
         if any(p.kind is p.VAR_POSITIONAL for p in params):
             raise TypeError(
-                f"Multimethod() can't infer the arity of {func!r}, which takes "
-                f"*args; pass arity explicitly"
+                f"can't infer the arity of {_describe(func)}, which takes *args; "
+                f"pass arity explicitly"
             )
         return sum(p.default is p.empty for p in params)
 
