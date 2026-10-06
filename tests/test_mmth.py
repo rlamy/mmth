@@ -338,6 +338,21 @@ def test_calls_dispatch_on_the_required_positional_params():
     assert exc_info.type is TypeError
 
 
+def test_dispatch_takes_an_arity():
+    @dispatch(arity=2)
+    def f(*args) -> str:
+        return "default"
+
+    f.register(int, int)(lambda a, b, *rest: f"int, int {len(rest)}")
+    assert f(1, 2, 3) == "int, int 1"
+    assert f("a", "b") == "default"
+
+    def g(a, b=None) -> str:
+        return "default"
+
+    assert dispatch(g, arity=2).registry == {(object, object): g}
+
+
 def test_dispatch_default_arity_ignores_keyword_only_params():
     @dispatch
     def f(a, *, key=None, **kwargs) -> str:

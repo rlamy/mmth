@@ -459,29 +459,42 @@ def inherit() -> Multimethod:
     return _PendingInherit()  # type: ignore[return-value]
 
 
-def dispatch(func: Callable[..., Any]) -> Multimethod:
+@overload
+def dispatch(func: Callable[..., Any], *, arity: int | None = None) -> Multimethod: ...
+@overload
+def dispatch(*, arity: int) -> Callable[[Callable[..., Any]], Multimethod]: ...
+def dispatch(func: Any = None, *, arity: int | None = None) -> Any:
     """Turn a function into a multimethod, with it as the default.
 
     The default implementation is registered for `object` at every required
     positional parameter, so it's called whenever no more specific signature
     matches: as with `functools.singledispatch`, its annotations are ignored.
     Calls dispatch on that many positional arguments, and pass any others on.
-    Raise `TypeError` if the default takes `*args`, or its signature can't be
-    read: use `Multimethod(func, arity=n)` instead.
+
+    Pass `arity` to dispatch on another number of arguments, either directly,
+    `dispatch(func, arity=n)`, or as `@dispatch(arity=n)`. It's required if
+    the default takes `*args` or has no signature to read, rather than guess.
     """
+    if func is None and arity is not None:
+        return lambda func: dispatch(func, arity=arity)
     if not _is_function(func):
         raise TypeError(f"dispatch() expected a function, got {func!r}")
-    return Multimethod(func)
+    return Multimethod(func, arity=arity)
 
 
-def dispatchmethod(func: Any) -> Multimethod:
+@overload
+def dispatchmethod(func: Any, *, arity: int | None = None) -> Multimethod: ...
+@overload
+def dispatchmethod(*, arity: int) -> Callable[[Any], Multimethod]: ...
+def dispatchmethod(func: Any = None, *, arity: int | None = None) -> Any:
     """Turn a method into a multimethod, as `dispatch` does a function.
 
     `self` is bound automatically via the descriptor protocol and excluded
     from dispatch, so `.register(*types)` only lists the types of the
-    remaining arguments. As with `functools.singledispatchmethod`, either
-    the method itself or any registered implementation can also be a
-    `classmethod` or `staticmethod` (applied *below* the decorator).
+    remaining arguments, and `arity` doesn't count it either (pass it as with
+    `dispatch`). As with `functools.singledispatchmethod`, either the method
+    itself or any registered implementation can also be a `classmethod` or
+    `staticmethod` (applied *below* the decorator).
 
     A subclass can replace a single implementation for itself, without
     touching the base class, via `inherit()` (see `inherit` and
@@ -502,8 +515,12 @@ def dispatchmethod(func: Any) -> Multimethod:
             return self.visit(node.left) + self.visit(node.right)
     ```
     """
+    if func is None and arity is not None:
+        return lambda func: dispatchmethod(func, arity=arity)
     if not _is_function(func):
         raise TypeError(f"dispatchmethod() expected a function, got {func!r}")
     if isinstance(func, staticmethod):
-        return Multimethod(func)
-    return Multimethod(func, _skip=1, _binds_class=isinstance(func, classmethod))
+        return Multimethod(func, arity=arity)
+    return Multimethod(
+        func, arity=arity, _skip=1, _binds_class=isinstance(func, classmethod)
+    )

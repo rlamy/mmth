@@ -21,10 +21,12 @@ them.
 The multimethod takes on the default's `__name__`, `__doc__`, `__wrapped__`,
 etc., as with `functools.wraps`.
 
-`dispatch` refuses to guess the arity of a default that takes `*args`, or
-that has no signature to read (whether builtins like `max` do depends on the
-Python implementation), and raises `TypeError`; pass it explicitly instead,
-as in `Multimethod(max, arity=2)`.
+`dispatch` and `dispatchmethod` take a keyword-only `arity` to dispatch on
+another number of arguments, as `@dispatch(arity=2)` or
+`dispatch(max, arity=2)` (not counting `self` for a method). It's required
+for a default that takes `*args`, or that has no signature to read (whether
+builtins like `max` do depends on the Python implementation): rather than
+guess, they raise `TypeError`.
 
 ### 2. Register an Implementation (Main Syntax)
 

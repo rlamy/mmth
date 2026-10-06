@@ -382,7 +382,7 @@ The default is registered for `object` at every required positional
 parameter, ignoring its annotations, as in `functools.singledispatch`; it's
 an ordinary table entry. That count is the multimethod's arity: calls
 dispatch on their first `arity` positional arguments and pass any others
-on (`*args` defaults need an explicit `Multimethod(func, arity=n)`). With one
+on (`*args` defaults need an explicit `@dispatch(arity=n)`). With one
 dispatched argument, behaviour matches
 `functools.singledispatch`/`singledispatchmethod` except where
 docs/specification.md ("Differences from `functools.singledispatch`") says

@@ -108,6 +108,26 @@ def test_dispatchmethod_method_registered_twice_is_one_implementation():
     assert Handler().visit("s") == "shared"
 
 
+def test_dispatchmethod_takes_an_arity():
+    class Handler:
+        @dispatchmethod(arity=1)
+        def visit(self, *nodes):
+            return "default"
+
+        @visit.register(Num)
+        def _(self, node, *rest):
+            return node.value + len(rest)
+
+        @dispatchmethod(arity=1)
+        @staticmethod
+        def describe(*nodes):
+            return "default"
+
+    assert Handler().visit(Num(5), Num(6)) == 6
+    assert Handler().visit(Node()) == "default"
+    assert Handler.describe(Num(1)) == "default"
+
+
 def test_dispatchmethod_rejects_non_callable():
     with pytest.raises(TypeError):
         dispatchmethod(42)
