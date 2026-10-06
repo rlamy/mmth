@@ -115,6 +115,7 @@ class Multimethod:
         arity: int | None = None,
         _skip: int = 0,
         _binds_class: bool = False,
+        _registry: TypeMap | None = None,
     ) -> None:
         """Create a multimethod with `func` as its default implementation.
 
@@ -130,9 +131,13 @@ class Multimethod:
         self._binds_class = _binds_class
         self._adapted: dict[Any, Any] = {}
         if func is None:
-            if arity is None:
-                raise TypeError("Multimethod() needs a default function or an arity")
-            self._registry: TypeMap = TypeMap(arity=arity)
+            if _registry is None:
+                if arity is None:
+                    raise TypeError(
+                        "Multimethod() needs a default function or an arity"
+                    )
+                _registry = TypeMap(arity=arity)
+            self._registry: TypeMap = _registry
             return
         functools.update_wrapper(self, func)
         self.__isabstractmethod__ = getattr(func, "__isabstractmethod__", False)
@@ -255,13 +260,11 @@ class Multimethod:
                     ...
                     return super().visit(x)
         """
-        child = type(self)(
-            arity=self._registry.arity,
+        return type(self)(
             _skip=self._skip,
             _binds_class=self._binds_class,
+            _registry=ChainTypeMap(self._registry),
         )
-        child._registry = ChainTypeMap(self._registry)
-        return child
 
     def _as_types(
         self, caller: str, types: _TypeSpec | tuple[_TypeSpec, ...]
