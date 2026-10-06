@@ -17,6 +17,14 @@ answers. As in `functools.singledispatch`, a multimethod with an ABC in its
 registry (or its `inherit()` parent's) records `abc.get_cache_token()` and
 clears its cache whenever the token has changed since.
 
+The cache holds the argument classes it has seen by strong reference, so a
+class a multimethod has been called with stays alive until that
+multimethod's registry (or its `inherit()` parent's) next changes, or the
+multimethod itself goes. `functools.singledispatch` holds them weakly
+instead, but a weak reference costs a call on every lookup: about 10% of a
+cached call, enough to lose its lead over `singledispatch`. That matters
+only for programs that create classes dynamically and dispatch on them.
+
 Once resolution itself was cached, building the cache key became the
 dominant remaining cost: a generator expression to compute `arg_types` from
 `*args` (needed in general, since a signature can have any arity) costs far
