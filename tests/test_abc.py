@@ -3,7 +3,7 @@ from collections import abc as collections_abc
 
 import pytest
 
-from mmth import AmbiguousMatchError, dispatch, dispatchmethod
+from mmth import AmbiguousMatchError, dispatch, dispatchmethod, inherit
 
 
 def test_dispatch_matches_a_real_abc_subclass():
@@ -167,3 +167,51 @@ def test_dispatchmethod_works_with_an_abc_hierarchy():
             return f"a circle with area {shape.area()}"
 
     assert Formatter().describe(Circle(2)) == "a circle with area 12.56636"
+
+
+def test_virtual_subclass_registered_after_calls_dispatches_anew():
+    class Greetable(abc.ABC):
+        pass
+
+    class Person:
+        pass
+
+    @dispatch
+    def greet(obj: object) -> str:
+        return "hello, stranger"
+
+    assert greet(Person()) == "hello, stranger"
+
+    @greet.register(Greetable)
+    def _(obj: Greetable) -> str:
+        return "hello, friend"
+
+    assert greet(Person()) == "hello, stranger"
+    Greetable.register(Person)
+    assert greet(Person()) == "hello, friend"
+
+
+def test_inherited_virtual_subclass_registered_after_calls_dispatches_anew():
+    class Greetable(abc.ABC):
+        pass
+
+    class Person:
+        pass
+
+    class Greeter:
+        @dispatchmethod
+        def greet(self, obj: object) -> str:
+            return "hello, stranger"
+
+    class LoudGreeter(Greeter):
+        greet = inherit()
+
+    assert LoudGreeter().greet(Person()) == "hello, stranger"
+
+    @Greeter.greet.register(Greetable)
+    def _(self, obj: Greetable) -> str:
+        return "hello, friend"
+
+    assert LoudGreeter().greet(Person()) == "hello, stranger"
+    Greetable.register(Person)
+    assert LoudGreeter().greet(Person()) == "hello, friend"
