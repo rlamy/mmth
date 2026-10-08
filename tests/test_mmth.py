@@ -1,4 +1,5 @@
 import functools
+import inspect
 import pickle
 import re
 import sys
@@ -473,6 +474,20 @@ def test_dispatch_default_arity_ignores_keyword_only_params():
 
     assert f.registry == {object: f.__wrapped__}
     assert f(1, key="k", extra=0) == "default k"
+
+
+def test_signature_is_the_default_s_else_any_arguments():
+    @dispatch
+    def f(a, b=1) -> str:
+        return "default"
+
+    bare = Multimethod(arity=1)
+    assert str(inspect.signature(f)) == "(a, b=1) -> str"
+    assert [p.kind for p in inspect.signature(bare).parameters.values()] == [
+        inspect.Parameter.VAR_POSITIONAL,
+        inspect.Parameter.VAR_KEYWORD,
+    ]
+    assert inspect.signature(bare.inherit()) == inspect.signature(bare)
 
 
 def test_multimethod_needs_a_default_or_an_arity():
