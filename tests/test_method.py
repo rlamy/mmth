@@ -559,6 +559,40 @@ def test_classmethod_call_lacks_an_argument_after_cls():
         Handler.visit()
 
 
+def test_register_with_types_says_when_self_or_cls_is_missing():
+    class Evaluator:
+        @dispatchmethod
+        def visit(self, node: Node):
+            return "default"
+
+        @dispatchmethod
+        @classmethod
+        def make(cls, node: Node):
+            return "default"
+
+    def no_self(node):
+        return "num"
+
+    with pytest.raises(
+        TypeError,
+        match=r"it takes 0 positional arguments after self, not 1; "
+        r"is it missing self\?$",
+    ):
+        Evaluator.visit.register(Num, no_self)
+    with pytest.raises(TypeError, match=r"after cls, not 1; is it missing cls\?$"):
+        Evaluator.make.register(Num, no_self)
+    with pytest.raises(TypeError, match=r"after cls, not 1; is it missing cls\?$"):
+        Evaluator.visit.register(Num, classmethod(no_self))
+
+    def no_node(self):
+        return "num"
+
+    with pytest.raises(TypeError, match=r"after self, not 1$"):
+        Evaluator.visit.register(Num, no_node)
+    with pytest.raises(TypeError, match=r"it takes 0 positional arguments, not 1$"):
+        Evaluator.visit.register(Num, staticmethod(lambda: "num"))
+
+
 def test_register_in_a_class_body_on_that_class_says_so():
     with pytest.raises(TypeError) as exc_info:
 

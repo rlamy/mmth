@@ -815,6 +815,29 @@ def test_register_requires_parameters_to_dispatch_on():
     assert f"in functools.partial({_located(g)}): needs 1" in str(exc_info.value)
 
 
+def test_register_with_types_requires_parameters_to_take_them():
+    @dispatch
+    def f(a: object, b: object) -> str:
+        return "default"
+
+    def g(a: int) -> str:
+        return "g"
+
+    with pytest.raises(TypeError) as exc_info:
+        f.register(int, int, func=g)
+    assert str(exc_info.value) == (
+        f"can't register {_located(g)} for f(int, int): it takes 1 positional "
+        f"argument, not 2"
+    )
+    with pytest.raises(TypeError, match="it takes 1 positional argument, not 2"):
+        f[int, int] = g
+
+    f.register(int, int, func=lambda *args: "varargs")
+    f.register(str, str, func=functools.partial(lambda a, b: "partial"))
+    assert f(1, 2) == "varargs"
+    assert f("a", "b") == "partial"
+
+
 def test_register_errors_locate_the_implementation():
     @dispatch
     def f(a: object) -> str:

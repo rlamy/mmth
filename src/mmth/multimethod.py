@@ -462,10 +462,40 @@ class Multimethod(Generic[_P, _R]):
             )
         raise TypeError(message)
 
+    def _check_takes(self, types: tuple[Any, ...], func: Any) -> None:
+        """Raise `TypeError` if `func` takes too few arguments to dispatch on.
+
+        Otherwise only calls would fail, and less clearly.
+        """
+        plain, params = self._params(func)
+        if params is None or any(p.kind is p.VAR_POSITIONAL for p in params):
+            return
+        if len(params) >= self._arity:
+            return
+        message = (
+            f"can't register {_describe(plain)} for "
+            f"{self._format_call(types, short=True)}: it takes "
+            f"{_count(len(params), 'positional argument')}"
+        )
+        _, skip = self._unwrap(func)
+        if not skip:
+            raise TypeError(f"{message}, not {self._arity}")
+        binds_class = isinstance(func, classmethod) or self._binds_class
+        first = "cls" if binds_class else "self"
+        message += f" after {first}, not {self._arity}"
+        # Then the parameter taken as `self`/`cls` was likely meant to be
+        # dispatched on.
+        signature = inspect.signature(plain, **_SIGNATURE_OPTIONS)
+        skipped = next(iter(signature.parameters), None)
+        if len(params) + 1 == self._arity and skipped not in ("self", "cls"):
+            message += f"; is it missing {first}?"
+        raise TypeError(message)
+
     def _register(self, types: tuple[Any, ...] | None, func: Any) -> None:
         """Register `func` for `types`, or for its annotations if None."""
         if types is not None:
             self._check_count(types, func)
+            self._check_takes(types, func)
         impl = self._callable(func)
         if types is None:
             types = self._param_types(func)
@@ -649,7 +679,8 @@ class Multimethod(Generic[_P, _R]):
         directly, `f.register(T, func)`. A union type (`int | str`)
         registers the implementation for each member. Also accepts a
         `classmethod` or `staticmethod`, for a method. Raise `TypeError` at
-        once for another number of types than `arity`.
+        once for another number of types than `arity`, and on registering
+        an implementation with too few positional parameters to take them.
         """
         return _register_with(self._register, types, func, self._check_count)
 
