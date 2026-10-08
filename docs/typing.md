@@ -4,6 +4,10 @@ mmth is typed (it ships a `py.typed` marker), so type checkers such as mypy
 and pyright check code that uses it: calls to a multimethod, and the
 implementations registered on it.
 
+It needs mypy 1.16 or later: older versions take a `dispatchmethod` in a
+base class for a plain function, and so reject a subclass's `inherit()`
+in its place.
+
 ## Calls
 
 A multimethod is typed by its default implementation's signature: its type
