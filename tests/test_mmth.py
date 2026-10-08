@@ -430,7 +430,7 @@ def test_calls_dispatch_on_the_required_positional_params():
     assert f(1, 2, "c") == "int, int c"
     assert f("a", 2, c="c") == "default c"
     with pytest.raises(
-        TypeError, match=r"f\(\) takes 2 positional arguments to dispatch on, got 1$"
+        TypeError, match=r"f\(\) takes 2 arguments to dispatch on, got 1: missing 'b'$"
     ) as exc_info:
         f(1)
     assert exc_info.type is TypeError
@@ -534,7 +534,7 @@ def test_register_rejects_another_arity_than_the_default():
         f[int, int, int] = lambda a, b, c: "int, int, int"
     assert list(f.registry) == [(object, object)]
     with pytest.raises(
-        TypeError, match=r"f\(\) takes 2 positional arguments to dispatch on, got 1$"
+        TypeError, match=r"f\(\) takes 2 arguments to dispatch on, got 1: missing 'b'$"
     ) as exc_info:
         f(1)
     assert exc_info.type is TypeError
@@ -1018,18 +1018,61 @@ def test_implementation_errors_point_at_its_call():
     assert "lookup" not in str(entry.statement)
 
 
-def test_call_with_dispatched_arguments_by_keyword_says_so():
+def test_call_takes_dispatched_arguments_by_the_default_names():
+    @dispatch
+    def f(a, b, c=None) -> str:
+        return f"default {c}"
+
+    @f.register(int, str)
+    def _(x, y, c=None) -> str:
+        return f"int, str {x} {y} {c}"
+
+    assert f(b="s", a=1) == f(1, "s") == "int, str 1 s None"
+    assert f(1, b="s", c=3) == "int, str 1 s 3"
+    assert f(a="s", b=1) == "default None"
+
+
+def test_implementation_errors_by_keyword_dont_chain_to_dispatch_errors():
+    @dispatch
+    def f(a, b) -> str:
+        raise ValueError("default")
+
+    with pytest.raises(ValueError) as exc_info:
+        f(1, b=2)
+    assert exc_info.value.__context__ is None
+
+
+def test_call_missing_dispatched_arguments_names_them():
     @dispatch
     def f(a, b, c=None) -> str:
         return "default"
 
     with pytest.raises(TypeError) as exc_info:
-        f(1, b=2, c=3)
+        f(1, c=3)
     assert str(exc_info.value) == (
-        f"{f.__qualname__}() takes 2 positional arguments to dispatch on, got 1; "
-        f"pass 'b' positionally, as only positional arguments are dispatched on"
+        f"{f.__qualname__}() takes 2 arguments to dispatch on, got 1: missing 'b'"
     )
-    assert exc_info.value.__suppress_context__
+    with pytest.raises(TypeError, match=r"got 0: missing 'a', 'b'$"):
+        f(b=2)
+
+
+def test_call_cant_take_positional_only_dispatched_arguments_by_keyword():
+    @dispatch
+    def f(a, /, b, **kwargs) -> str:
+        return f"default {kwargs}"
+
+    assert f(1, b=2) == "default {}"
+    with pytest.raises(TypeError, match=r"takes 2 arguments to dispatch on, got 0$"):
+        f(a=1, b=2)
+
+
+def test_call_without_a_default_takes_dispatched_arguments_positionally():
+    f = Multimethod(arity=1)
+    f.register(int)(lambda a: "int")
+
+    assert f(1) == "int"
+    with pytest.raises(TypeError, match=r"takes 1 argument to dispatch on, got 0$"):
+        f(a=1)
 
 
 def test_lookup_passes_on_errors_of_its_own():

@@ -410,6 +410,13 @@ def test_register_type_then_class_differs_from_functools():
     assert type(reference(1)) is Box
 
 
+def test_dispatched_argument_by_keyword_differs_from_functools():
+    reference, f = _both(lambda decorator: decorator(lambda x: "default"))
+    with pytest.raises(TypeError, match="requires at least 1 positional argument"):
+        reference(x=1)
+    assert f(x=1) == "default"
+
+
 def test_dispatch_on_a_method_differs_from_functools():
     # functools binds it, and dispatches on self; mmth doesn't bind it, so
     # it refuses a default taking self

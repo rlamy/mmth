@@ -233,6 +233,7 @@ class Multimethod:
         "_skip",
         "_binds_class",
         "_adapted",
+        "_keywords",
         "__dict__",
         "__weakref__",
     )
@@ -254,7 +255,9 @@ class Multimethod:
         registered for `object` at each of them, whatever its annotations.
         Pass `arity` for a multimethod without a default, or a default that
         takes `*args`, where it's required, or to override `func`'s. A call
-        matching no registration raises `NoMatchError`. The underscored
+        can pass those arguments by keyword too, by `func`'s parameter names,
+        and they're then passed on positionally. A call matching no
+        registration raises `NoMatchError`. The underscored
         arguments are internal, set by `dispatchmethod` and `inherit()`.
         Raise `TypeError` for an `arity` that isn't an integer, and
         `ValueError` for a negative one.
@@ -269,6 +272,7 @@ class Multimethod:
         self._skip = _skip
         self._binds_class = _binds_class
         self._adapted: dict[Any, Any] = {}
+        self._keywords: tuple[str | None, ...] = ()
         if func is None:
             if _registry is None:
                 if arity is None:
@@ -285,6 +289,7 @@ class Multimethod:
             arity = self._infer_arity(func)
         self._registry = TypeMap({(object,) * arity: self._callable(func)})
         self._arity = arity
+        self._keywords = self._keyword_names(func)
 
     def _infer_arity(self, func: Any) -> int:
         """Return how many required positional parameters `func` has."""
@@ -300,6 +305,19 @@ class Multimethod:
                 f"pass arity explicitly"
             )
         return sum(p.default is p.empty for p in params)
+
+    def _keyword_names(self, func: Any) -> tuple[str | None, ...]:
+        """Return the names a call can pass each dispatched argument by.
+
+        None for a positional-only one, and the tuple ends early if `func`
+        has fewer positional parameters than `arity`.
+        """
+        _, params = self._params(func)
+        params = [p for p in params or () if p.kind is not p.VAR_POSITIONAL]
+        return tuple(
+            None if p.kind is p.POSITIONAL_ONLY else p.name
+            for p in params[: self._arity]
+        )
 
     def _unwrap(self, func: Any) -> tuple[Callable[..., Any], int]:
         """Return `func`'s plain function, and how many leading params to skip."""
@@ -500,27 +518,38 @@ class Multimethod:
         lines.append(f"Register {fix_call} to resolve it.")
         return "\n".join(lines)
 
-    def _too_few_args_error(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
-        """Describe a call with too few positional arguments to dispatch on."""
+    def _too_few_args_error(self, args: tuple[Any, ...]) -> str:
+        """Describe a call with too few arguments to dispatch on.
+
+        `args` includes those passed by keyword, moved into place.
+        """
         after = ""
         if self._skip:
             after = " after cls" if self._binds_class else " after self"
+        got = max(len(args) - self._skip, 0)
         message = (
-            f"{self._name()}() takes {_count(self._arity, 'positional argument')}"
-            f" to dispatch on{after}, got {max(len(args) - self._skip, 0)}"
+            f"{self._name()}() takes {_count(self._arity, 'argument')} to "
+            f"dispatch on{after}, got {got}"
         )
-        default = getattr(self, "__wrapped__", None)
-        if default is None:
+        missing = self._keywords[got:]
+        if len(missing) < self._arity - got or None in missing:
             return message
-        _, params = self._params(default)
-        names = [p.name for p in params or () if p.kind is not p.VAR_POSITIONAL]
-        by_keyword = [repr(name) for name in names[: self._arity] if name in kwargs]
-        if by_keyword:
-            message += (
-                f"; pass {', '.join(by_keyword)} positionally, as only positional "
-                f"arguments are dispatched on"
-            )
-        return message
+        return f"{message}: missing {', '.join(map(repr, missing))}"
+
+    def _call_by_keyword(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+        """Call with dispatched arguments that weren't passed positionally.
+
+        Move those passed by keyword into place, as Python would bind them,
+        then call again; raise `TypeError` if any are still missing.
+        """
+        moved = list(args)
+        for name in self._keywords[len(args) - self._skip :]:
+            if name is None or name not in kwargs:
+                break
+            moved.append(kwargs.pop(name))
+        if len(moved) - self._skip < self._arity:
+            raise TypeError(self._too_few_args_error(tuple(moved)))
+        return self(*moved, **kwargs)
 
     def _lookup_error(self, error: TypeError) -> TypeError | None:
         """Return the error to raise for a failed lookup, or None to re-raise.
@@ -537,14 +566,6 @@ class Multimethod:
                 error.candidates,
             )
         return None
-
-    def _call_error(
-        self, error: TypeError, args: tuple[Any, ...], kwargs: dict[str, Any]
-    ) -> TypeError | None:
-        """Return the error to raise for a call's failed lookup, or None to re-raise."""
-        if len(args) - self._skip < self._arity:
-            return TypeError(self._too_few_args_error(args, kwargs))
-        return self._lookup_error(error)
 
     # The types-first order matters: a type is itself callable, so
     # `register(int)` would otherwise match the bare-decorator overload.
@@ -590,6 +611,7 @@ class Multimethod:
             _binds_class=self._binds_class,
             _registry=ChainTypeMap(self._registry),
         )
+        child._keywords = self._keywords
         # As `update_wrapper` would, but leaving its qualname to
         # `__set_name__`, and not abstract: like a method, it overrides.
         vars(child).update(
@@ -688,11 +710,15 @@ class Multimethod:
         try:
             impl = self._registry.lookup(key)
         except TypeError as e:
-            error = self._call_error(e, args, kwargs)
-            if error is None:
-                raise
-            raise error from None
-        return impl(*args, **kwargs)
+            if len(args) - skip >= self._arity:
+                error = self._lookup_error(e)
+                if error is None:
+                    raise
+                raise error from None
+        else:
+            return impl(*args, **kwargs)
+        # Outside the handler, so that errors from the call don't chain to it.
+        return self._call_by_keyword(args, kwargs)
 
     def __set_name__(self, owner: type, name: str) -> None:
         """Take the attribute's name, unless named after a default already.
@@ -820,6 +846,7 @@ def dispatch(func: Any = None, *, arity: int | None = None) -> Any:
     positional parameter, so it's called whenever no more specific signature
     matches, whatever its annotations.
     Calls dispatch on that many positional arguments, and pass any others on.
+    They can pass those by keyword too, by the default's parameter names.
 
     Pass `arity` to dispatch on another number of arguments, either directly,
     `dispatch(func, arity=n)`, or as `@dispatch(arity=n)`. It's required if

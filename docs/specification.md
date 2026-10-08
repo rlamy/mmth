@@ -17,6 +17,11 @@ more specific signature matches. Its annotations are ignored. Their number is th
 dispatches on its first `arity` positional arguments, and passes any others,
 like optional parameters, on to the implementation without dispatching on
 them.
+A call can also pass dispatched arguments by keyword, by the default's
+parameter names: after `def f(x, y)`, `f(y=1, x=2)` is `f(2, 1)`. The
+implementation gets them positionally, whatever its own parameter names.
+That excludes positional-only parameters, and a multimethod without a
+default (`Multimethod(arity=n)`) takes them positionally only.
 The multimethod takes on the default's `__name__`, `__doc__`, `__wrapped__`,
 etc., as with `functools.wraps`.
 
@@ -126,8 +131,8 @@ When `function_name(arg1, arg2, ...)` is called:
 - **One arity**: every signature has the multimethod's arity, as many types
   as the default has required positional parameters (or
   `Multimethod(arity=n)`, required without a default); registering another
-  length raises `TypeError`, and a call with fewer positional arguments
-  raises `TypeError` (not `NoMatchError`). Registering by annotations reads
+  length raises `TypeError`, and a call with fewer dispatched arguments,
+  positional or by keyword, raises `TypeError` (not `NoMatchError`). Registering by annotations reads
   those of the implementation's first `arity` positional parameters
 - **ABCs**: matching uses `issubclass`, so abstract base classes match their
   virtual subclasses (via `ABC.register()` or `__subclasshook__`), including
@@ -201,6 +206,9 @@ like `functools.singledispatch` and `functools.singledispatchmethod`, except:
   `self` raises `TypeError` when the class is created, pointing to
   `dispatchmethod` (wrapped in a `RuntimeError` on Python 3.11 and PyPy
   3.11, as for `inherit()`; see docs/methods.md).
+- **Dispatched arguments by keyword**: `f(x=1)` dispatches on `x`, named
+  as in the default; functools raises `TypeError`, as it requires the
+  dispatched argument to be positional.
 - **`classmethod`/`staticmethod` implementations are stored adapted**:
   `registry` and `func[types]` hold a plain function that takes the
   multimethod's own arguments, not the `classmethod`/`staticmethod` object
@@ -327,7 +335,7 @@ bar("str")
 2. **Variadic arguments**: Never dispatched on. Positional arguments past
    the arity are passed on to the implementation, so a default can take
    `*args`, given an explicit `arity`
-3. **Keyword arguments**: Never dispatched on, only passed on to the
-   implementation; a call passing a dispatched argument by keyword has too
-   few positional arguments, and raises `TypeError`
+3. **Keyword arguments**: Those named after the default's dispatched
+   parameters are dispatched on, and passed on positionally; others are
+   never dispatched on, only passed on to the implementation
 4. **Callable references**: Registration requires explicit callable object, not name matching

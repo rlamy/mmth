@@ -375,8 +375,7 @@ def test_inherit_keeps_the_base_default_metadata():
     assert Sub.visit.__wrapped__ is Base.visit.__wrapped__
     assert inspect.signature(Sub.visit) == inspect.signature(Base.visit)
     assert Sub.visit.__qualname__.endswith("Sub.visit")
-    with pytest.raises(TypeError, match="; pass 'node' positionally"):
-        Sub().visit(node=Num(1))
+    assert Sub().visit(node=Num(1)) == "default"
 
 
 def test_inherit_function_register_rejects_non_function_at_once():
@@ -488,8 +487,8 @@ def test_unbound_call_lacks_an_argument_after_self():
 
     with pytest.raises(
         TypeError,
-        match=r"Handler\.visit\(\) takes 1 positional "
-        r"argument to dispatch on after self, got 0$",
+        match=r"Handler\.visit\(\) takes 1 argument to dispatch on after "
+        r"self, got 0: missing 'node'$",
     ):
         Handler.visit(1)
 
@@ -548,10 +547,16 @@ def test_classmethod_call_lacks_an_argument_after_cls():
         def visit(cls, node: object):
             return "default"
 
+        @visit.register(int)
+        @classmethod
+        def _(cls, n):
+            return f"int {cls.__name__}"
+
+    assert Handler.visit(node=1) == Handler().visit(node=1) == "int Handler"
     with pytest.raises(
-        TypeError, match=r"to dispatch on after cls, got 0; pass 'node'"
+        TypeError, match=r"to dispatch on after cls, got 0: missing 'node'$"
     ):
-        Handler.visit(node=1)
+        Handler.visit()
 
 
 def test_register_in_a_class_body_on_that_class_says_so():
@@ -582,7 +587,7 @@ def test_inherited_multimethod_assigned_later_takes_the_base_name():
         pass
 
     Sub.visit = Base.visit.inherit()
-    with pytest.raises(TypeError, match=r"^visit\(\) takes 1 positional argument"):
+    with pytest.raises(TypeError, match=r"^visit\(\) takes 1 argument"):
         Sub().visit()
 
 
