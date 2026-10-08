@@ -1,7 +1,9 @@
 """Static typing of `dispatchmethod` multimethods, checked by mypy and pyright.
 
-Each expected error carries an ignore comment for both, which they're
-configured to report if unused (see tox.ini, `typing` env).
+Each expected error carries an ignore comment for each checker reporting
+it, which they're configured to report if unused (see tox.ini, `typing`
+env). Known gaps, in `*Unchecked*` classes, carry none for a checker that
+misses them, so catching them fails until it's added.
 """
 
 from typing import Callable, assert_type
@@ -52,6 +54,16 @@ class Evaluator:
     @classmethod
     def _(cls, node: Num) -> int:
         return 6
+
+
+class MissingSelfUncheckedByMypy:
+    @dispatchmethod
+    def visit(self, node: Node) -> int:
+        return 0
+
+    @visit.register(Num)
+    def _(node: Num) -> int:  # noqa: N805  # pyright: ignore[reportGeneralTypeIssues]
+        return 1
 
 
 def test_methods_bind_self() -> None:

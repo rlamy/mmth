@@ -30,10 +30,11 @@ uv run tox -e typing  # mypy and pyright, on src/ and tests/typing/
 `tests/typing/check_*.py` check how mypy and pyright see code using mmth:
 never run, only type-checked (`--strict` for mypy, and strict mode via
 `tests/typing/pyrightconfig.json` for pyright). Each line where an error is
-expected carries an ignore comment for each checker, e.g.
+expected carries an ignore comment for each checker reporting it, e.g.
 `# type: ignore[arg-type]  # pyright: ignore[reportArgumentType]`, and both
 report an ignore comment that's no longer needed, so a missing error fails
-too.
+too. Known gaps (named `unchecked`) carry none for a checker that misses
+them, so one that starts catching them fails until it's added.
 
 To test against a specific interpreter that isn't already on your machine,
 have uv fetch it first, e.g. `uv python install 3.14` or

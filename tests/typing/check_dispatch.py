@@ -1,7 +1,9 @@
 """Static typing of `dispatch` multimethods, checked by mypy and pyright.
 
-Each expected error carries an ignore comment for both, which they're
-configured to report if unused (see tox.ini, `typing` env).
+Each expected error carries an ignore comment for each checker reporting
+it, which they're configured to report if unused (see tox.ini, `typing`
+env). Known gaps, in `test_*_unchecked*`, carry none for a checker that
+misses them, so catching them fails until it's added.
 """
 
 from typing import Callable, assert_type
@@ -76,6 +78,23 @@ def test_registered_types_are_ones_the_default_accepts() -> None:
     @meet.register(int, Dog)  # type: ignore[arg-type]  # pyright: ignore[reportCallIssue, reportUntypedFunctionDecorator]
     def _(a: int, b: Dog) -> str:
         return ""
+
+
+def test_number_of_types_unchecked_by_mypy() -> None:
+    @meet.register(Dog)  # pyright: ignore[reportCallIssue, reportUntypedFunctionDecorator]
+    def _(a: Dog, b: Dog) -> str:
+        return ""
+
+
+@dispatch(arity=1)
+def show(x: Animal, verbose: bool = False) -> str:
+    return "animal"
+
+
+def test_parameters_not_dispatched_on_unchecked() -> None:
+    @show.register(Dog)
+    def _(x: Dog) -> str:
+        return "dog"
 
 
 @dispatch
