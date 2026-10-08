@@ -694,23 +694,29 @@ class Multimethod:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Call the implementation chosen by the arguments' types."""
-        # Fast path for one dispatched argument (see docs/performance.md).
-        # `__class__`, not `type()`, so proxies like `Mock(spec=cls)`
-        # dispatch as that class.
+        # Fast paths for one or two dispatched arguments (see
+        # docs/performance.md). `__class__`, not `type()`, so proxies like
+        # `Mock(spec=cls)` dispatch as that class.
         key: type | tuple[type, ...]
         skip = self._skip
-        if self._arity == 1:
+        arity = self._arity
+        if arity == 1:
             try:
                 key = args[skip].__class__
             except IndexError:
                 key = ()  # too few arguments: let lookup() raise
+        elif arity == 2:
+            try:
+                key = (args[skip].__class__, args[skip + 1].__class__)
+            except IndexError:
+                key = ()
         else:
-            key = tuple(arg.__class__ for arg in args[skip : skip + self._arity])
+            key = tuple(arg.__class__ for arg in args[skip : skip + arity])
         # Two statements, so that a traceback shows which one failed.
         try:
             impl = self._registry.lookup(key)
         except TypeError as e:
-            if len(args) - skip >= self._arity:
+            if len(args) - skip >= arity:
                 error = self._lookup_error(e)
                 if error is None:
                     raise

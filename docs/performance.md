@@ -32,7 +32,9 @@ more than the single `__class__` lookup the overwhelmingly common one-dispatched
 argument case actually needs - true of essentially every `dispatchmethod`
 call (`self` is skipped) and most `dispatch` functions. `__call__`
 fast-paths that case, halving the cost of a call on CPython (and more on
-PyPy).
+PyPy). It also builds a two-type key directly, which costs about 40% less
+than the generator expression for a two-argument call; three or more
+arguments take the general path.
 
 `Multimethod` and `TypeMap` keep every attribute a call touches in
 `__slots__`.

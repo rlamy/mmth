@@ -61,6 +61,17 @@ def test_mmth_dispatch_one_level_of_inheritance(benchmark):
     benchmark(handle, Dog())
 
 
+@pytest.mark.parametrize("arity", [2, 3])
+def test_mmth_dispatch_several_arguments(benchmark, arity):
+    @dispatch(arity=arity)
+    def handle(*args) -> str:
+        return "default"
+
+    handle.register(*[Dog] * arity, lambda *args: "dogs")
+
+    benchmark(handle, *[Dog()] * arity)
+
+
 @pytest.mark.parametrize("registry_size", [1, 10, 100])
 def test_mmth_dispatch_scaling_when_nothing_matches(benchmark, registry_size):
     """Every registered type is unrelated to the call's."""
