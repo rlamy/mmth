@@ -775,6 +775,7 @@ docs = [
     { name = "mkdocs" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extra = ["python"] },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -788,6 +789,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytest-benchmark", marker = "extra == 'dev'", specifier = ">=5.3.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+    { name = "ruff", marker = "extra == 'docs'", specifier = ">=0.6" },
     { name = "tox", marker = "extra == 'dev'", specifier = ">=4" },
     { name = "tox-uv", marker = "extra == 'dev'", specifier = ">=1" },
 ]
