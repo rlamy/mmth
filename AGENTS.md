@@ -1,181 +1,61 @@
 # AGENTS.md
 
-Guidelines for agents working in this repository.
+Guidelines for agents working in this repository. User-facing behaviour is
+documented in `docs/` (MkDocs); this file covers only what isn't there:
+conventions, internals, and what to keep in sync.
 
----
-
-## Project Overview
-
-**mmth** is a simple multiple-dispatch library for Python, inspired by Julia's multiple dispatch. It allows defining functions with different implementations based on argument types.
-
-- **Python**: >= 3.11
-- **License**: MIT
-- **Repository**: https://github.com/rlamy/mmth
+**mmth** is a multiple-dispatch library for Python (>= 3.11, MIT),
+inspired by Julia: https://github.com/rlamy/mmth
 
 ---
 
 ## Commands
 
-### Development Setup
-
-Dependencies are managed with [uv](https://docs.astral.sh/uv/) and pinned in
-`uv.lock` for reproducibility; `.python-version` pins the default
-interpreter (3.12).
+Setup, CI and the docs build are described in `docs/development.md`
+(uv, `uv.lock`, tox with `tox-uv`). Quick reference:
 
 ```bash
-# Create .venv and install locked dev dependencies
-uv sync --extra dev
+uv sync --extra dev            # locked dev environment (add --extra docs for mkdocs)
+uv run pytest                  # tests (benchmarks excluded by default)
+uv run pytest tests/test_mmth.py::test_basic_dispatch
+uv run pytest -m benchmark     # benchmarks only, see docs/performance.md
+ruff check src/ tests/         # lint, including docstring format
+ruff format src/ tests/
+mypy src/ && pyright src/
+mypy --strict tests/typing && pyright -p tests/typing
 
-# Run a command inside the environment
-uv run pytest
+uv run tox                     # everything CI runs: every interpreter + lint, typing, docs
+uv run tox -e py313            # one interpreter (py311-py314, pypy311)
+uv run tox -e lint             # or: typing, docs, benchmark
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
-the updated `uv.lock`.
-
-### Testing
-
-```bash
-# Run all tests
-pytest
-
-# Run a single test file
-pytest tests/test_mmth.py
-
-# Run a single test function
-pytest tests/test_mmth.py::test_basic_dispatch
-
-# Run with verbose output
-pytest -v
-
-# Run with coverage (if installed)
-pytest --cov=mmth --cov-report=term-missing
-```
-
-### Benchmarks
-
-`tests/test_benchmarks.py` (via [pytest-benchmark](https://pytest-benchmark.readthedocs.io/))
-measures performance, not correctness, so it's excluded from the default
-`pytest`/`tox` run (`addopts = "-m 'not benchmark'"` in `pyproject.toml`):
-
-```bash
-pytest -m benchmark    # run only the benchmarks
-tox -e benchmark       # same, in an isolated tox env
-```
-
-### Linting
-
-```bash
-# Run ruff linter
-ruff check src/ tests/
-
-# Auto-fix linting issues
-ruff check --fix src/ tests/
-
-# Format code
-ruff format src/ tests/
-```
-
-### Type Checking
-
-```bash
-mypy src/
-pyright src/
-mypy --strict tests/typing
-pyright -p tests/typing    # strict mode, via tests/typing/pyrightconfig.json
-uv run tox -e typing       # all of the above
-```
-
-### CI (GitHub Actions)
-
-CI (`.github/workflows/ci.yml`) runs tests on Python 3.11, 3.12, 3.13, 3.14,
-and PyPy 3.11, plus separate `ruff check` lint, mypy/pyright typing, and
-`mkdocs build --strict` docs jobs. Each job installs uv, has uv fetch the
-matrix interpreter (`uv python install ...`), and runs through `tox`
-(`tox.ini`, using the `tox-uv` plugin) so the same commands reproduce
-locally:
-
-```bash
-uv run tox            # test envs for every interpreter tox/uv can find or fetch, + lint, typing, docs
-uv run tox -e py313    # test a single interpreter
-uv run tox -e lint     # lint only
-uv run tox -e typing   # mypy + pyright on src/ and tests/typing/ (see docs/development.md)
-uv run tox -e docs     # docs build only
-uv run tox -e benchmark  # performance benchmarks (not part of the default envlist)
-```
+`uv.lock`.
 
 ---
 
 ## Code Style
 
-### General
+`ruff check` enforces the line length (88), import sorting, PEP 8 naming
+and the docstring format (`pyproject.toml`). Beyond that:
 
-- **Line length**: 88 characters (follows ruff default)
-- **Python version**: 3.11+
-- **Encoding**: UTF-8
+### Imports and annotations
 
-### Imports
-
-- Use absolute imports: `from mmth import dispatch`
-- Group imports in order: stdlib, third-party, local
-- Do not use wildcard imports (`from mmth import *`)
+- Absolute imports only, no wildcard imports.
 - Do not use `from __future__ import annotations` in mmth's own code; use
   `typing.Self` for the enclosing class, or else quote forward references
   (`-> "Multimethod"`). mmth still supports it in user code.
-- Sort imports with `ruff` (automatic)
-
-```python
-# Correct
-import inspect
-from typing import Any, Callable
-
-from mmth import dispatch
-from mmth.multimethod import Multimethod
-```
-
-### Naming Conventions
-
-| Element | Convention | Example |
-|---------|------------|---------|
-| Modules | lowercase | `multimethod.py` |
-| Classes | PascalCase | `class Multimethod` |
-| Functions | snake_case | `def dispatch()` |
-| Methods | snake_case | `def register()` |
-| Private | leading underscore | `_registry` |
-| Constants | UPPER_SNAKE | `MAX_SIZE` |
-
-### Type Annotations
-
-- Use type annotations for function signatures
-- Use `Any` sparingly
-- Prefer explicit types over type comments
-
-```python
-# Good
-def add(a: int, b: int) -> int:
-    return a + b
-
-def process(data: dict[str, Any]) -> list[str]:
-    ...
-
-# Avoid
-def add(a, b):  # No types
-    return a + b
-```
+- Annotate function signatures; use `Any` sparingly.
 
 ### Docstrings
 
 - Public docstrings must follow [PEP 257](https://peps.python.org/pep-0257/),
-  and private ones should. `ruff check` enforces its format on every
-  docstring (`D` rules, `pep257` convention); tests are exempt from needing
-  docstrings, not from their format.
-- Include docstrings for public APIs: modules, classes, `__init__`, public
-  and dunder methods, functions
-- One-line summary in the imperative ("Return ...", not "Returns ..."),
-  ending with a period; then a blank line before any further description,
-  and closing quotes on their own line
-- Google style (`Args:`, `Returns:`) for sections, which mkdocstrings
-  renders; keep brief and descriptive
+  and private ones should; ruff checks the format of all of them (tests
+  are exempt from needing one, not from the format).
+- Document public APIs: modules, classes, `__init__`, public and dunder
+  methods, functions. They're the API reference, rendered by mkdocstrings.
+- One-line summary in the imperative ("Return ...", not "Returns ...").
+- Google style (`Args:`, `Returns:`) for sections; keep them brief.
 
 ```python
 def register(self, *types):
@@ -187,13 +67,11 @@ def register(self, *types):
     Returns:
         A decorator that registers the function.
     """
-    ...
 ```
 
 ### Comments
 
-These apply to comments and to private docstrings (public docstrings are
-the API reference, rendered by mkdocstrings):
+These apply to comments and to private docstrings:
 
 - Keep them short: a line or two, rarely more.
 - Explain *why*, never *how*: don't narrate what the code already says.
@@ -205,91 +83,69 @@ the API reference, rendered by mkdocstrings):
 
 ```python
 # Good - a reason the reader would otherwise miss
-# `__class__`, not `type()`, so proxies like `Mock(spec=cls)` dispatch as
-# that class.
+# Not a running "best so far": a later candidate can dominate two
+# earlier, mutually incomparable ones.
 
 # Avoid - narrates the code
-# 1. Exact match in registry
-if arg_types in self._registry:
-    ...
+# Return the exact match if there is one
+if types in table:
+    return table[types]
 ```
 
-### Error Handling
+### Errors
 
-- Use specific exceptions (`TypeError`, `KeyError`, `ValueError`)
-- Provide clear error messages
-- Avoid catching generic `Exception` unless necessary
+- Raise specific built-in exceptions (`TypeError`, `ValueError`,
+  `KeyError`) with a message that says what was wrong and what was
+  received; don't catch generic `Exception`.
+- Failed lookups raise `NoMatchError` / `AmbiguousMatchError` (both
+  `TypeError` subclasses) carrying `types` (and `candidates`). `TypeMap`
+  words them in terms of keys; `Multimethod._lookup_error()` restates them
+  in terms of the call. Keep that split when adding lookup errors.
 
 ```python
-# Good
-if not types:
-    raise TypeError("register() requires at least one type argument")
-
-if types not in self._registry:
-    raise KeyError(f"No implementation registered for {types}")
-
-# Avoid
-if not types:
-    raise Exception("error")  # Too generic
+raise TypeError(f"register() expected a function, got {func!r}")
 ```
 
-### Code Organization
+### Code organization
 
-- Private methods (starting with `_`) should be defined before public methods
-- Group related functionality together
-- Keep classes focused (single responsibility)
-
-### Conditionals and Flow
-
-- Use early returns to avoid deep nesting
-- Prefer clear boolean expressions over complex conditionals
-
-```python
-# Good - early return
-def __call__(self, *args, **kwargs):
-    if arg_types in self._registry:
-        return self._registry[arg_types](*args, **kwargs)
-    
-    func = self._find_most_specialized(arg_types)
-    if func is not None:
-        return func(*args, **kwargs)
-    
-    raise TypeError(f"No matching implementation for types {arg_types}")
-```
+- Define private methods (`_name`) before public ones.
+- Use early returns rather than deep nesting.
 
 ---
 
 ## Testing Guidelines
 
-- All new functionality must have tests
+- All new functionality must have tests, in `tests/test_*.py`.
 - Test behaviour, not declarations: don't write tests that just restate the
-  code (e.g. `issubclass(NoMatchError, TypeError)` for an exception class)
-- Tests should be in `tests/test_*.py`
-- **Do not use test classes** - use standalone functions
+  code (e.g. `issubclass(NoMatchError, TypeError)` for an exception class).
+- **Do not use test classes** - use standalone functions with descriptive
+  names.
 - Never import from a test file (`test_*.py`); helpers or Hypothesis
   strategies used by more than one test module go in a separate file, e.g.
-  `tests/strategies.py`
-- Test names should be descriptive: `test_feature_name`
-- Use assertions with clear failure messages
+  `tests/strategies.py`.
 
 ```python
 def test_ambiguity_detection():
-    """Multiple equally specialized signatures should raise TypeError."""
+    class Animal:
+        pass
+
+    class Dog(Animal):
+        pass
+
     @dispatch
     def f(a: Animal, b: Animal) -> str:
         return "Animal, Animal"
-    
+
     @f.register(Dog, Animal)
     def _(d: Dog, a: Animal) -> str:
         return "Dog, Animal"
-    
+
     @f.register(Animal, Dog)
     def _(a: Animal, d: Dog) -> str:
         return "Animal, Dog"
-    
+
     with pytest.raises(AmbiguousMatchError) as exc_info:
         f(Dog(), Dog())
-    
     assert "is ambiguous between" in str(exc_info.value)
 ```
 
@@ -297,16 +153,12 @@ def test_ambiguity_detection():
 
 ## Commit Messages
 
-- Use imperative mood: "Add feature" not "Added feature"
-- First line: ~50 characters
-- Body: wrapped at 72 characters
-- Reference issues when applicable
+- Imperative mood: "Add feature", not "Added feature".
+- First line ~50 characters; body wrapped at 72.
+- Reference issues when there is one.
 
 ```
-Add __getitem__ for accessing specializations
-
-Enables func[Type] syntax to retrieve registered implementations.
-Fixes #10.
+Allow passing dispatched arguments by keyword
 ```
 
 ---
@@ -315,118 +167,60 @@ Fixes #10.
 
 ```
 mmth/
-├── .github/workflows/
-│   └── ci.yml            # GitHub Actions CI
+├── .github/workflows/ci.yml  # CI: runs tox (tests per interpreter, lint, typing, docs)
 ├── src/mmth/
 │   ├── __init__.py       # Public API exports
-│   ├── multimethod.py    # Core implementation (dispatch, Multimethod, dispatchmethod)
-│   └── typemap.py        # TypeMap/ChainTypeMap: signature table, lookup, cache
+│   ├── multimethod.py    # dispatch, dispatchmethod, inherit, Multimethod
+│   └── typemap.py        # TypeMap/ChainTypeMap (table, lookup, cache), lookup errors
 ├── tests/
-│   ├── test_mmth.py      # dispatch/Multimethod test suite
-│   ├── test_method.py    # dispatchmethod test suite
-│   ├── test_typemap.py   # TypeMap test suite
-│   ├── test_abc.py       # dispatch with real/virtual/structural ABC subclasses
-│   ├── strategies.py     # Hypothesis strategies shared by test modules
+│   ├── test_mmth.py      # dispatch/Multimethod
+│   ├── test_method.py    # dispatchmethod, inherit
+│   ├── test_typemap.py   # TypeMap/ChainTypeMap
+│   ├── test_abc.py       # real/virtual/structural ABC subclasses
 │   ├── test_hypothesis.py # property-based specialization tests
+│   ├── strategies.py     # Hypothesis strategies shared by test modules
 │   ├── test_functools_compat.py # single dispatch vs functools.singledispatch
-│   ├── test_benchmarks.py # pytest-benchmark performance benchmarks (excluded by default)
+│   ├── test_benchmarks.py # pytest-benchmark (excluded by default)
 │   └── typing/           # type-checked only (mypy, pyright): how user code is typed
-├── pyproject.toml        # Project config
-├── uv.lock               # Locked dependency versions (uv)
-├── .python-version       # Default interpreter pin (uv)
-├── tox.ini               # Test/lint/typing/docs envs (used locally and in CI)
-├── docs/                 # MkDocs sources (spec, methods, typing, performance, API reference, development)
-├── mkdocs.yml            # MkDocs Material + mkdocstrings config
-├── .readthedocs.yaml     # Read the Docs build config
-├── README.md             # Landing page; links to the hosted docs
-└── AGENTS.md              # This file
+├── docs/                 # MkDocs: specification, methods, typing, performance, reference, development
+├── pyproject.toml, uv.lock, .python-version, tox.ini
+├── mkdocs.yml, .readthedocs.yaml
+└── README.md             # Landing page; links to the hosted docs
 ```
 
 ---
 
-## Key Patterns
+## Internals and What to Keep in Sync
 
-### Multiple Dispatch
+User-facing semantics are in `docs/specification.md` (syntax, dispatch
+algorithm, errors), `docs/methods.md` (`dispatchmethod`, `inherit()`) and
+`docs/typing.md`. Implementation notes:
 
-```python
-@dispatch
-def add(a: object, b: object) -> object:
-    """Default implementation."""
-    return a + b
-
-@add.register(int, float)
-def add_int_float(a: int, b: float) -> float:
-    """Specialized for int + float."""
-    return float(a) + b
-
-@add.register  # types from annotations (all required, unlike @dispatch)
-def add_float_int(a: float, b: int) -> float:
-    return a + float(b)
-
-# Access an implementation
-impl = add[int, float]
-
-# Metaprogramming
-add[str, str] = lambda a, b: f"{a}{b}"
-```
-
-### Dispatch Algorithm
-
-1. Exact match in registry
-2. Inheritance-based match (most specific wins)
-3. Error if no match
-
-Each `Multimethod` keeps its implementations in a `TypeMap` (a mutable
-mapping by exact signature) whose `lookup()` does the lookup above and
-memoizes a successful resolution by argument types, invalidated on any
-change (cascading to `inherit()` descendants, whose `ChainTypeMap`
-looks among `parent | child`) - see docs/performance.md.
-
-The default is registered for `object` at every required positional
-parameter, ignoring its annotations, as in `functools.singledispatch`; it's
-an ordinary table entry. That count is the multimethod's arity: calls
-dispatch on their first `arity` positional arguments and pass any others
-on (`*args` defaults need an explicit `@dispatch(arity=n)`). With one
-dispatched argument, behaviour matches
-`functools.singledispatch`/`singledispatchmethod` except where
-docs/specification.md ("Differences from `functools.singledispatch`") says
-otherwise; `tests/test_functools_compat.py` checks this against functools
-itself, so keep it in sync with any new single-dispatch behaviour.
-
-### Static Typing
-
-`Multimethod[P, R]` is generic over the default implementation's signature,
-so calls are checked against it; implementations must return `R`.
-`dispatchmethod` is typed as `_Method` (type checkers only) to bind `self`.
-With explicit types, `register(T1, T2)` returns `_Register` (also type
-checkers only), which checks both that the implementation accepts those
-types and that the default does. `tests/typing/` covers this; keep it in
-sync with any change to the public signatures.
-
-### Method Dispatch
-
-`dispatchmethod` is `dispatch` for use on a method: `self` is bound
-automatically via the descriptor protocol and excluded from dispatch, so
-`.register(*types)` only needs the types of the remaining arguments. A
-subclass replaces one implementation for itself via `inherit()` (a
-separate multimethod dispatching on `base | subclass` registrations,
-so the most specific signature still wins across both) rather than
-`.register()` on the shared table; `inherit()`
-finds the base multimethod itself via `__set_name__` (same lookup
-`super()` would do), or use `Base.visit.inherit()` directly when that
-auto-lookup isn't what you want. See docs/methods.md ("Method Dispatch"
-and "Overriding One Implementation in a Subclass") for the full examples,
-including using `dispatchmethod` to replace the Visitor pattern
-(dispatching straight on a node's type instead of an
-`accept()`/`visit_ElementType()` callback pair).
-
-```python
-class Evaluator:
-    @dispatchmethod
-    def visit(self, node: Expr):
-        raise TypeError(f"no visit for {type(node).__name__}")
-
-    @visit.register(Num)
-    def _(self, node):
-        return node.value
-```
+- **Table and lookup:** each `Multimethod` keeps its implementations in a
+  `TypeMap` (a mutable mapping by exact signature) whose `lookup()` finds
+  the exact or most specific match and memoizes it by argument types,
+  invalidated on any change. That cascades to `inherit()` descendants,
+  whose `ChainTypeMap` looks among `parent | child`. See
+  docs/performance.md.
+- **Default and arity:** the default is registered for `object` at every
+  required positional parameter, ignoring its annotations, as in
+  `functools.singledispatch`; it's an ordinary table entry. That count is
+  the arity: calls dispatch on their first `arity` positional arguments
+  and pass any others on (`*args` defaults need an explicit
+  `@dispatch(arity=n)`).
+- **Methods:** `dispatchmethod` binds `self` via the descriptor protocol
+  and excludes it from dispatch. `inherit()` finds the base multimethod
+  via `__set_name__`.
+- **functools compatibility:** with one dispatched argument, behaviour
+  matches `functools.singledispatch`/`singledispatchmethod` except where
+  docs/specification.md ("Differences from `functools.singledispatch`")
+  says otherwise. `tests/test_functools_compat.py` checks this against
+  functools itself; keep it in sync with any new single-dispatch behaviour.
+- **Static typing:** `Multimethod[P, R]` is generic over the default's
+  signature, so calls are checked against it, and implementations must
+  return `R`. `dispatchmethod` is typed as `_Method` (type checkers only)
+  to bind `self`. With explicit types, `register(T1, T2)` returns
+  `_Register` (also type checkers only), which checks that both the
+  implementation and the default accept those types. `tests/typing/` covers
+  this; keep it and docs/typing.md in sync with any change to the public
+  signatures.
