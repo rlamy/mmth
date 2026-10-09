@@ -24,6 +24,7 @@ plugins:
           options:
             docstring_style: google
             show_source: false
+            separate_signature: true
 
 markdown_extensions:
   - pymdownx.highlight
