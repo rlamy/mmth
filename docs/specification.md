@@ -216,7 +216,8 @@ like `functools.singledispatch` and `functools.singledispatchmethod`, except:
   class attribute it works as a static function; one whose default takes
   `self` raises `TypeError` when the class is created, pointing to
   `dispatchmethod` (wrapped in a `RuntimeError` on Python 3.11 and PyPy
-  3.11, as for `inherit()`; see docs/methods.md).
+  3.11, as for `inherit()`; see
+  [Overriding One Implementation in a Subclass](methods.md#overriding-one-implementation-in-a-subclass)).
 - **Dispatched arguments by keyword**: `f(x=1)` dispatches on `x`, named
   as in the default; functools raises `TypeError`, as it requires the
   dispatched argument to be positional.
