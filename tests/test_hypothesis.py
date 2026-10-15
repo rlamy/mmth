@@ -131,3 +131,32 @@ def test_multi_arg_dispatch_handles_ambiguity(data, reverse_registration_order):
             child = mm.inherit()
             child.register(*fix_types)(lambda *args: "fix")
             assert child(*instances) == "fix"
+
+
+@given(_multi_arg_dags())
+def test_detect_ambiguities_agrees_with_lookups(data):
+    class_lists, ancestors_lists, registered = data
+    arity = len(class_lists)
+    mm = Multimethod(arity=arity)
+    for sig in registered:
+        types = tuple(class_lists[p][sig[p]] for p in range(arity))
+        mm.register(*types)(lambda *args, sig=sig: sig)
+
+    errors = mm.detect_ambiguities()
+    # Each is what a call raises; the classes include `multi_inheritance_dag`'s
+    # checkpoints, which subclass several nodes.
+    for error in errors:
+        with pytest.raises(AmbiguousMatchError) as e:
+            mm.dispatch(*error.types)
+        assert e.value.candidates == error.candidates
+    assert len({frozenset(sig for sig, _ in e.candidates) for e in errors}) == len(
+        errors
+    )
+
+    sizes = [len(cl) for cl in class_lists]
+    ambiguous = any(
+        len(_maximal_registered_signatures(query, registered, ancestors_lists)) > 1
+        for query in itertools.product(*(range(s) for s in sizes))
+    )
+    if ambiguous:
+        assert errors

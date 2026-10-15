@@ -266,3 +266,89 @@ def test_copy_keeps_watching_abcs():
     assert clone.lookup(Dog) == "object"
     Walker.register(Dog)
     assert clone.lookup(Dog) == "walker"
+
+
+def test_detect_ambiguities_finds_incomparable_keys_at_their_meet():
+    class A:
+        pass
+
+    class B(A):
+        pass
+
+    tm = TypeMap({(A, A): "a", (B, A): "ba", (A, B): "ab"})
+    [error] = tm.detect_ambiguities()
+    assert error.types == (B, B)
+    assert {sig for sig, _ in error.candidates} == {(B, A), (A, B)}
+    assert str(error).startswith("Ambiguous lookup for (B, B)")
+
+    tm[B, B] = "bb"
+    assert tm.detect_ambiguities() == []
+
+
+def test_detect_ambiguities_finds_the_most_general_common_subclass():
+    class A:
+        pass
+
+    class B:
+        pass
+
+    tm = TypeMap({(A,): "a", (B,): "b"})
+    assert tm.detect_ambiguities() == []
+
+    class C(A, B):
+        pass
+
+    class D(C):
+        pass
+
+    class E(D, B):
+        pass
+
+    [error] = tm.detect_ambiguities()
+    assert error.types == (C,)
+
+
+def test_detect_ambiguities_reports_each_set_of_candidates_once():
+    class A:
+        pass
+
+    class B:
+        pass
+
+    class C:
+        pass
+
+    class AllThree(A, B, C):
+        pass
+
+    class AB(A, B):
+        pass
+
+    tm = TypeMap({(A,): "a", (B,): "b", (C,): "c"})
+    errors = tm.detect_ambiguities()
+    assert sorted(len(e.candidates) for e in errors) == [2, 3]
+    assert {e.types for e in errors} == {(AB,), (AllThree,)}
+
+
+def test_detect_ambiguities_ignores_unrelated_keys_without_common_subclass():
+    class A:
+        pass
+
+    class B:
+        pass
+
+    assert TypeMap({(A, B): 1, (B, A): 2}).detect_ambiguities() == []
+
+
+def test_detect_ambiguities_includes_the_parent_keys():
+    class A:
+        pass
+
+    class B(A):
+        pass
+
+    parent = TypeMap({(A, A): "a", (B, A): "ba"})
+    child = ChainTypeMap(parent, {(A, B): "ab"})
+    assert parent.detect_ambiguities() == []
+    [error] = child.detect_ambiguities()
+    assert error.types == (B, B)

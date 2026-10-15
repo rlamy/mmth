@@ -698,3 +698,35 @@ def test_inherit_replacing_an_implementation_does_not_warn():
         @Sub.visit.register
         def _(self, node: int):
             return "sub int again"
+
+
+def test_detect_ambiguities_of_an_inherited_dispatchmethod():
+    class A:
+        pass
+
+    class B:
+        pass
+
+    class C(A, B):
+        pass
+
+    class Base:
+        @dispatchmethod
+        def visit(self, node: object):
+            return "default"
+
+        @visit.register
+        def _(self, node: A):
+            return "A"
+
+    class Sub(Base):
+        visit = Base.visit.inherit()
+
+        @visit.register
+        def _(self, node: B):
+            return "B"
+
+    assert Base.visit.detect_ambiguities() == []
+    [error] = Sub.visit.detect_ambiguities()
+    assert error.types == (C,)
+    assert "is ambiguous between" in str(error)

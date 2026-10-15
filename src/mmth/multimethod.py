@@ -833,6 +833,22 @@ class Multimethod(Generic[_P, _R]):
                 raise
             raise error from None
 
+    def detect_ambiguities(self) -> list[AmbiguousMatchError]:
+        """Return an error for each ambiguity a call could hit now.
+
+        Each is the `AmbiguousMatchError` a call with arguments of its
+        `types` raises, one per distinct set of conflicting implementations,
+        so a test suite can check there are none:
+        `assert not f.detect_ambiguities()`. See
+        `TypeMap.detect_ambiguities()` for which types it tries.
+        """
+        return [
+            AmbiguousMatchError(
+                self._ambiguity_error(e.types, e.candidates), e.types, e.candidates
+            )
+            for e in self._registry.detect_ambiguities()
+        ]
+
     def __call__(self, *args: _P.args, **kwargs: _P.kwargs) -> _R:
         """Call the implementation chosen by the arguments' types."""
         # Fast paths for one or two dispatched arguments (see

@@ -8,7 +8,7 @@ misses them, so catching them fails until it's added.
 
 from typing import Callable, assert_type
 
-from mmth import dispatch
+from mmth import AmbiguousMatchError, dispatch
 
 
 class Animal: ...
@@ -107,3 +107,4 @@ def test_single_dispatch_functools_style() -> None:
     describe.register(Dog, cats)  # type: ignore[arg-type]  # pyright: ignore[reportCallIssue, reportArgumentType]
     assert_type(describe.dispatch(Dog), Callable[..., str])
     assert_type(describe[Dog], Callable[..., str])
+    assert_type(describe.detect_ambiguities(), list[AmbiguousMatchError])

@@ -1,7 +1,9 @@
 """A mapping keyed by tuples of types, looked up by subclass."""
 
+import itertools
 import weakref
 from abc import get_cache_token
+from collections import deque
 from collections.abc import Iterator, Mapping, MutableMapping
 from types import UnionType
 from typing import Any, Self, Union, get_args, get_origin
@@ -35,6 +37,37 @@ def _format_types(types: tuple[Any, ...]) -> str:
 def _count(n: int, noun: str) -> str:
     """Return e.g. `1 type` or `2 types`."""
     return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
+def _common_subclasses(a: type, b: type) -> list[type]:
+    """Return the most general classes that exist now and subclass both `a` and `b`.
+
+    Found through `__subclasses__()`, so not virtual or structural subclasses
+    of an ABC `a`.
+    """
+    if issubclass(a, b):
+        return [a]
+    if issubclass(b, a):
+        return [b]
+    found = []
+    seen = set()
+    # `type.__subclasses__`, as a metaclass's own takes no argument.
+    queue = deque(type.__subclasses__(a))
+    while queue:
+        cls = queue.popleft()
+        if cls in seen:
+            continue
+        seen.add(cls)
+        if issubclass(cls, b):
+            found.append(cls)
+        else:
+            queue.extend(type.__subclasses__(cls))
+    # Another path can reach a subclass of one found.
+    return [
+        cls
+        for cls in found
+        if not any(other is not cls and issubclass(cls, other) for other in found)
+    ]
 
 
 class NoMatchError(TypeError):
@@ -249,6 +282,32 @@ class TypeMap(MutableMapping[_Signature, Any]):
     def arity(self) -> int:
         """Return the length of every key."""
         return self._arity
+
+    def detect_ambiguities(self) -> list[AmbiguousMatchError]:
+        """Return an error for each ambiguity a `lookup()` could hit now.
+
+        Each is the `AmbiguousMatchError` that `lookup()` raises for some
+        tuple of types, one per distinct set of candidates. They're found
+        among the most general types matching two keys, neither more specific
+        than the other: at each position, the more specific of their types,
+        or for unrelated classes, their common subclasses. Only classes that
+        exist when it's called count, and not virtual or structural
+        subclasses of an ABC, which can't be listed. Meant for tests: it can
+        walk many subclasses.
+        """
+        found: dict[frozenset[_Signature], AmbiguousMatchError] = {}
+        for sig_a, sig_b in itertools.combinations(self._lookup_table(), 2):
+            if self._is_more_specialized(sig_a, sig_b) or self._is_more_specialized(
+                sig_b, sig_a
+            ):
+                continue
+            for types in itertools.product(*map(_common_subclasses, sig_a, sig_b)):
+                try:
+                    self._miss(types)
+                except AmbiguousMatchError as e:
+                    candidates = frozenset(sig for sig, _ in e.candidates)
+                    found.setdefault(candidates, e)
+        return list(found.values())
 
     def lookup(self, key: type | _Signature) -> Any:
         """Return the value for the most specific key the types `key` match.

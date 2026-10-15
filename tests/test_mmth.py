@@ -1308,3 +1308,33 @@ def test_redefinition_is_filtered_by_message_from_the_command_line(action, retur
     )
     assert result.returncode == returncode
     assert ("RedefinitionWarning" in result.stderr) == (action == "error")
+
+
+def test_detect_ambiguities_reports_what_a_call_would_raise():
+    class Animal:
+        pass
+
+    class Dog(Animal):
+        pass
+
+    @dispatch
+    def f(a: object, b: object) -> str:
+        return "default"
+
+    @f.register
+    def _(a: Dog, b: Animal) -> str:
+        return "Dog, Animal"
+
+    @f.register
+    def _(a: Animal, b: Dog) -> str:
+        return "Animal, Dog"
+
+    [error] = f.detect_ambiguities()
+    with pytest.raises(AmbiguousMatchError) as exc_info:
+        f(Dog(), Dog())
+    assert str(error) == str(exc_info.value)
+    assert error.types == exc_info.value.types
+    assert error.candidates == exc_info.value.candidates
+
+    f.register(Dog, Dog)(lambda a, b: "Dog, Dog")
+    assert f.detect_ambiguities() == []

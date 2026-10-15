@@ -173,6 +173,9 @@ implementation must be registered for every member.
   arguments of those types would run, without calling it.
 - `func.registry` is a read-only mapping of every registered signature to its
   implementation, keyed by a bare type for a single argument, else a tuple.
+- `func.detect_ambiguities()` returns the `AmbiguousMatchError` a call
+  would raise, for each ambiguity among the classes that exist now, without
+  calling anything (see [Ambiguity Detection](#ambiguity-detection)).
 
 A multimethod pickles by reference, as a function does: by its module and
 qualified name, so one defined at module level or as a class attribute
@@ -321,6 +324,24 @@ f(Dog(), Dog())
 #   f(Animal, Dog): _ at example.py:15
 # Register f(Dog, Dog) to resolve it.
 ```
+
+`detect_ambiguities()` finds the same error without a call, so a test suite
+can check that none are left:
+
+```python
+[error] = f.detect_ambiguities()
+error.types  # (Dog, Dog)
+
+f.register(Dog, Dog)(lambda a, b: "Dog, Dog")
+assert not f.detect_ambiguities()
+```
+
+It tries the most general types matching two signatures, neither more
+specialized than the other: at each position, the more specialized of their
+types, or for unrelated classes, their common subclasses, found through
+`__subclasses__()`. So it only knows about classes that exist when it's
+called, and not about virtual or structural subclasses of an ABC.
+`TypeMap.detect_ambiguities()` does the same for a type map's keys.
 
 ## Error Cases
 
