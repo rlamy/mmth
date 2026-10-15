@@ -2,7 +2,9 @@ import functools
 import inspect
 import pickle
 import re
+import subprocess
 import sys
+import warnings
 from collections.abc import Iterable, Sized
 from typing import (
     Annotated,
@@ -17,7 +19,7 @@ from typing import (
 
 import pytest
 
-from mmth import AmbiguousMatchError, NoMatchError, dispatch
+from mmth import AmbiguousMatchError, NoMatchError, RedefinitionWarning, dispatch
 from mmth.multimethod import Multimethod
 
 
@@ -929,7 +931,8 @@ def test_optional_and_union_members():
     def g(a: Optional[int]) -> str:
         return "int or none"
 
-    f.register(Union[str, bytes, None])(lambda a: "str, bytes or none")
+    with pytest.warns(RedefinitionWarning, match=r"multimethod f\(None\):"):
+        f.register(Union[str, bytes, None])(lambda a: "str, bytes or none")
 
     assert f(1) == "int or none"
     assert f(None) == "str, bytes or none"
@@ -1141,7 +1144,8 @@ def test_arity_zero_dispatches_on_nothing():
     assert f() == "default"
     with pytest.raises(TypeError, match="dispatches on 0 arguments, not 1$"):
         f.register(int)
-    f[()] = lambda: "replaced"
+    with pytest.warns(RedefinitionWarning):
+        f[()] = lambda: "replaced"
     assert f() == "replaced"
 
 
@@ -1179,7 +1183,8 @@ def test_register_rejects_unresolved_lazy_annotation():
 
     f.register(g)
     assert f(Later()) == "g"
-    f.register(h)
+    with pytest.warns(RedefinitionWarning):
+        f.register(h)
     assert f(None) == "h"
 
 
@@ -1197,3 +1202,109 @@ def test_multimethod_pickles_by_reference():
     assert pickle.loads(pickle.dumps(module_level)) is module_level
     with pytest.raises(TypeError, match="cannot pickle Multimethod: it has no "):
         pickle.dumps(Multimethod(arity=1))
+
+
+def test_redefinition_warns_at_the_registration():
+    @dispatch
+    def f(a: object, b: object) -> str:
+        return "default"
+
+    @f.register(int, str)
+    def first(a: int, b: str) -> str:
+        return "first"
+
+    with pytest.warns(RedefinitionWarning) as record:
+
+        @f.register(int, str)
+        def second(a: int, b: str) -> str:
+            return "second"
+
+    assert re.match(
+        r"Redefinition of multimethod f\(int, str\): replacing "
+        r"test_redefinition_warns_at_the_registration.<locals>.first at .* "
+        r"with .*second at ",
+        str(record[0].message),
+    )
+    assert record[0].filename == __file__
+    assert f(1, "s") == "second"
+
+
+def test_redefinition_warns_for_every_way_to_register():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    f[int] = lambda a: "first"
+    with pytest.warns(RedefinitionWarning) as record:
+        f[int] = lambda a: "second"
+        f.register(int, lambda a: "third")
+        f.register(int)(lambda a: "fourth")
+
+        @f.register
+        def _(a: int) -> str:
+            return "fifth"
+
+    assert len(record) == 4
+    assert all(w.filename == __file__ for w in record)
+    assert f(1) == "fifth"
+
+
+def test_registering_the_same_implementation_again_does_not_warn():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    def impl(a: object) -> str:
+        return "impl"
+
+    f.register(int, impl)
+    f.register(int | str, impl)
+    f[int] = impl
+    assert f[int | str] is impl
+
+
+def test_redefinition_warns_only_for_union_members_already_registered():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    f[int] = lambda a: "int"
+    with pytest.warns(RedefinitionWarning) as record:
+        f.register(int | str)(lambda a: "int or str")
+    assert len(record) == 1
+    assert str(record[0].message).startswith("Redefinition of multimethod f(int):")
+
+
+def test_redefinition_as_error_leaves_the_registry_unchanged():
+    @dispatch
+    def f(a: object) -> str:
+        return "default"
+
+    f[int] = lambda a: "int"
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RedefinitionWarning)
+        with pytest.raises(RedefinitionWarning):
+            f.register(str | int)(lambda a: "str or int")
+    assert f(1) == "int"
+    assert f("s") == "default"
+
+
+@pytest.mark.parametrize("action, returncode", [("ignore", 0), ("error", 1)])
+def test_redefinition_is_filtered_by_message_from_the_command_line(action, returncode):
+    code = """if True:
+        from mmth import dispatch
+
+        @dispatch
+        def f(a):
+            return "default"
+
+        f[int] = lambda a: "first"
+        f[int] = lambda a: "second"
+    """
+    result = subprocess.run(
+        [sys.executable, "-W", f"{action}:Redefinition of multimethod", "-c", code],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == returncode
+    assert ("RedefinitionWarning" in result.stderr) == (action == "error")

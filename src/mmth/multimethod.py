@@ -4,7 +4,9 @@ import functools
 import inspect
 import itertools
 import operator
+import os
 import sys
+import warnings
 from collections.abc import Mapping
 from types import MappingProxyType, MethodType, NoneType, SimpleNamespace, UnionType
 from typing import (
@@ -43,6 +45,10 @@ _Registered = Any
 _TypeSpec = type | UnionType | TypeVar | _SpecialForm | None
 # How many registered signatures a `NoMatchError` lists.
 _MAX_LISTED = 5
+_PACKAGE_DIR = os.path.dirname(__file__) + os.sep
+# Every `RedefinitionWarning` starts with it, so that `python -W` can match
+# the message: it can't name the category, which isn't importable yet.
+_REDEFINITION = "Redefinition of multimethod"
 
 # Annotations are evaluated lazily since Python 3.14, so reading a signature
 # can raise `NameError`; leave the ones that don't resolve yet as
@@ -124,6 +130,35 @@ def _resolve(func: Any, name: str, annotation: Any) -> Any:
             f"register() can't resolve the annotation{shown} of parameter "
             f"{name!r} of {_describe(func)} ({e}); {advice}"
         ) from None
+
+
+class RedefinitionWarning(UserWarning):
+    """Warn that a multimethod's implementation for a signature was replaced.
+
+    Registering a different implementation for a signature that the
+    multimethod already has replaces it. Where that's intended, silence it
+    with the `warnings` filters: `warnings.filterwarnings("ignore",
+    category=RedefinitionWarning)`, or `warnings.catch_warnings()` around
+    the registration. Made an error, it leaves the multimethod unchanged.
+
+    Python's `-W` option and `PYTHONWARNINGS` are read before `mmth` can be
+    imported, so they can't name this category; match the message instead,
+    which always starts with "Redefinition of multimethod":
+    `python -W "ignore:Redefinition of multimethod"`. pytest's
+    `filterwarnings` option can name it: `error::mmth.RedefinitionWarning`.
+    """
+
+
+def _warn(message: str, category: type[Warning]) -> None:
+    """Issue a warning attributed to the first caller outside mmth."""
+    frame = sys._getframe(1)
+    stacklevel = 2
+    while frame.f_back is not None and frame.f_code.co_filename.startswith(
+        _PACKAGE_DIR
+    ):
+        frame = frame.f_back
+        stacklevel += 1
+    warnings.warn(message, category, stacklevel=stacklevel)
 
 
 def _describe(func: Any) -> str:
@@ -499,7 +534,18 @@ class Multimethod(Generic[_P, _R]):
         impl = self._callable(func)
         if types is None:
             types = self._param_types(func)
-        for sig in _expand(types):
+        sigs = _expand(types)
+        # Warn for every signature before storing any, so that a warning made
+        # an error leaves the multimethod unchanged.
+        for sig in sigs:
+            old = self._registry.get(sig)
+            if old is not None and old is not impl:
+                _warn(
+                    f"{_REDEFINITION} {self._format_call(sig, short=True)}: "
+                    f"replacing {_describe(old)} with {_describe(impl)}",
+                    RedefinitionWarning,
+                )
+        for sig in sigs:
             self._registry[sig] = impl
 
     def _callable(self, func: Any) -> Any:

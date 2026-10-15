@@ -11,3 +11,4 @@
         - ChainTypeMap
         - NoMatchError
         - AmbiguousMatchError
+        - RedefinitionWarning

@@ -8,13 +8,20 @@ see `test_*_differs_from_functools` below and docs/specification.md.
 import abc
 import functools
 import inspect
+import warnings
 from typing import Any, Optional, Union
 from unittest import mock
 
 import pytest
 from hypothesis import given
 
-from mmth import AmbiguousMatchError, dispatch, dispatchmethod, inherit
+from mmth import (
+    AmbiguousMatchError,
+    RedefinitionWarning,
+    dispatch,
+    dispatchmethod,
+    inherit,
+)
 
 from strategies import multi_inheritance_dag, with_registered_subset
 
@@ -370,12 +377,34 @@ def test_any_differs_from_functools():
         def f(x):
             return "default"
 
-        f.register(Any)(lambda x: "any")
+        with warnings.catch_warnings():
+            # mmth replaces the default
+            warnings.simplefilter("ignore", RedefinitionWarning)
+            f.register(Any)(lambda x: "any")
         return f
 
     reference, f = _both(build)
     assert reference(1) == "default"
     assert f(1) == "any"
+
+
+def test_redefinition_differs_from_functools():
+    # functools replaces the implementation silently; mmth warns
+    def build(decorator):
+        @decorator
+        def f(x):
+            return "default"
+
+        f.register(int)(lambda x: "first")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            f.register(int)(lambda x: "second")
+        return f, caught
+
+    (reference, reference_caught), (f, caught) = _both(build)
+    assert reference(1) == f(1) == "second"
+    assert reference_caught == []
+    assert [w.category for w in caught] == [RedefinitionWarning]
 
 
 def test_class_as_implementation():

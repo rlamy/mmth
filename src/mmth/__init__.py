@@ -1,6 +1,12 @@
 """mmth: multiple dispatch for Python, inspired by Julia."""
 
-from mmth.multimethod import Multimethod, dispatch, dispatchmethod, inherit
+from mmth.multimethod import (
+    Multimethod,
+    RedefinitionWarning,
+    dispatch,
+    dispatchmethod,
+    inherit,
+)
 from mmth.typemap import (
     AmbiguousMatchError,
     ChainTypeMap,
@@ -17,4 +23,5 @@ __all__ = [
     "ChainTypeMap",
     "NoMatchError",
     "AmbiguousMatchError",
+    "RedefinitionWarning",
 ]

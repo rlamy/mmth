@@ -170,7 +170,7 @@ mmth/
 ├── .github/workflows/ci.yml  # CI: runs tox (tests per interpreter, lint, typing, docs)
 ├── src/mmth/
 │   ├── __init__.py       # Public API exports
-│   ├── multimethod.py    # dispatch, dispatchmethod, inherit, Multimethod
+│   ├── multimethod.py    # dispatch, dispatchmethod, inherit, Multimethod, RedefinitionWarning
 │   └── typemap.py        # TypeMap/ChainTypeMap (table, lookup, cache), lookup errors
 ├── tests/
 │   ├── test_mmth.py      # dispatch/Multimethod

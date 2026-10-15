@@ -123,6 +123,15 @@ When `function_name(arg1, arg2, ...)` is called:
 | `__setitem__` | `func[int, str] = impl` | `None` |
 | `__getitem__` | `impl = func[int, str]` | Registered callable or raises `KeyError` |
 
+Registering a different implementation for a signature the multimethod
+already has, the default included, replaces it and warns with
+`mmth.RedefinitionWarning`, attributed to the line that registered it.
+Registering the same implementation again doesn't warn, nor does an
+`inherit()` multimethod replacing its parent's (see
+[Overriding One Implementation in a Subclass](methods.md#overriding-one-implementation-in-a-subclass)).
+Where replacing is intended, silence it with the `warnings` filters (see
+[`RedefinitionWarning`](reference.md#mmth.RedefinitionWarning)).
+
 ### Type Matching Rules
 
 - **Exact types**: `int` matches `int` only
@@ -211,6 +220,9 @@ like `functools.singledispatch` and `functools.singledispatchmethod`, except:
 - **Dispatched arguments by keyword**: `f(x=1)` dispatches on `x`, named
   as in the default; functools raises `TypeError`, as it requires the
   dispatched argument to be positional.
+- **Replacing an implementation warns**: registering a different one for
+  a signature already registered warns with `RedefinitionWarning`, where
+  functools replaces it silently.
 - **`classmethod`/`staticmethod` implementations are stored adapted**:
   `registry` and `func[types]` hold a plain function that takes the
   multimethod's own arguments, not the `classmethod`/`staticmethod` object

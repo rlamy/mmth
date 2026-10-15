@@ -52,6 +52,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-m 'not benchmark'"
+filterwarnings = ["error::mmth.RedefinitionWarning"]
 
 [tool.ruff]
 line-length = 88

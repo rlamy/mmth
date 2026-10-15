@@ -3,7 +3,13 @@ import pickle
 
 import pytest
 
-from mmth import AmbiguousMatchError, Multimethod, dispatchmethod, inherit
+from mmth import (
+    AmbiguousMatchError,
+    Multimethod,
+    RedefinitionWarning,
+    dispatchmethod,
+    inherit,
+)
 
 
 class Node:
@@ -667,3 +673,28 @@ def test_dispatchmethod_pickles_by_reference():
     bound = pickle.loads(pickle.dumps(PickledSub().visit))
     assert bound(Num(1)) == "num"
     assert bound(Add(Num(1), Num(2))) == "add"
+
+
+def test_inherit_replacing_an_implementation_does_not_warn():
+    class Base:
+        @dispatchmethod
+        def visit(self, node: object):
+            return "default"
+
+        @visit.register
+        def _(self, node: int):
+            return "base int"
+
+    class Sub(Base):
+        visit = Base.visit.inherit()
+
+        @visit.register
+        def _(self, node: int):
+            return "sub int"
+
+    assert Sub().visit(1) == "sub int"
+    with pytest.warns(RedefinitionWarning):
+
+        @Sub.visit.register
+        def _(self, node: int):
+            return "sub int again"
