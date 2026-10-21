@@ -325,6 +325,11 @@ f(Dog(), Dog())
 # Register f(Dog, Dog) to resolve it.
 ```
 
+This is what registering an operation symmetrically leads to: an
+implementation for `(Dog, Animal)` and its mirror `(Animal, Dog)` leave
+`(Dog, Dog)` ambiguous, and with it any pair of `Dog` subclasses, so
+register `(Dog, Dog)` as well.
+
 `detect_ambiguities()` finds the same error without a call, so a test suite
 can check that none are left:
 
