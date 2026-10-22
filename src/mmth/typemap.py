@@ -127,7 +127,7 @@ class TypeMap(MutableMapping[_Signature, Any]):
     """
 
     # Slots, since `lookup()` is performance-critical (see
-    # docs/performance.md).
+    # docs/explanation/performance.md).
     __slots__ = (
         "_table",
         "_cache",

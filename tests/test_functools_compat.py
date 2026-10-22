@@ -2,7 +2,7 @@
 
 Each test builds the same thing with both, via `_both()`, and checks they
 agree. The intentional differences are tested (and documented) separately:
-see `test_*_differs_from_functools` below and docs/specification.md.
+see `test_*_differs_from_functools` below and docs/reference/functools.md.
 """
 
 import abc

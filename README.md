@@ -27,6 +27,6 @@ print(add(1, 2.0))  # 3.0 (int, float) -> registered implementation
 
 ## Documentation
 
-Full documentation - specification, method dispatch, performance notes, API
-reference and development guide - is at https://mmth.readthedocs.io. The
+Full documentation - how-to guides, reference, design notes and development
+guide - is at https://mmth.readthedocs.io. The
 sources live in [`docs/`](docs/).

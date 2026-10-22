@@ -40,6 +40,20 @@ To test against a specific interpreter that isn't already on your machine,
 have uv fetch it first, e.g. `uv python install 3.14` or
 `uv python install pypy3.11`.
 
+## Running benchmarks
+
+`tests/test_benchmarks.py` measures dispatch performance (via
+[pytest-benchmark](https://pytest-benchmark.readthedocs.io/)) rather than
+correctness, so it's excluded from the default test run (`addopts` in
+`pyproject.toml`) and from `tox`'s default envlist. Run it explicitly:
+
+```bash
+uv run pytest -m benchmark          # via the dev venv directly
+uv run tox -e benchmark             # via tox, in an isolated env
+```
+
+See [Performance](explanation/performance.md) for what makes dispatch fast.
+
 ## Building the docs
 
 The documentation is a [MkDocs](https://www.mkdocs.org/) site using the

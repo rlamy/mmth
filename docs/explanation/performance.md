@@ -1,4 +1,6 @@
-# Performance: Resolution Caching
+# Performance
+
+## Resolution caching
 
 Resolving a call's implementation (matching runtime types against the
 registry, merged with those along `inherit()`'s parent chain)
@@ -9,7 +11,8 @@ clears the cache, cascading to every `inherit()`-chained descendant
 (whose lookups include its keys). Failed resolutions (ambiguous / no match)
 aren't cached. This makes repeat calls with the same concrete types - the
 common case - essentially free after the first one, regardless of registry
-size or `inherit()` chain depth; see `tests/test_benchmarks.py`.
+size or `inherit()` chain depth; see
+[Development](../development.md#running-benchmarks) to measure it.
 
 Registering an ABC is the one case where the cache can go stale without a
 `register()` call: `SomeABC.register(cls)` changes what `issubclass`
@@ -25,7 +28,9 @@ reference costs a call on every lookup: about 10% of a cached call. That
 matters only for programs that create classes dynamically and dispatch on
 them.
 
-Once resolution itself was cached, building the cache key became the
+## Fast paths
+
+Once resolution itself is cached, building the cache key becomes the
 dominant remaining cost: a generator expression to compute `arg_types` from
 `*args` (needed in general, since a signature can have any arity) costs far
 more than the single `__class__` lookup the overwhelmingly common one-dispatched-
@@ -42,6 +47,8 @@ cached call. Given only plain classes, as when an implementation falls back
 on a more general one with `f.dispatch(Base)(...)`, it skips that and goes
 straight to the cache, costing about two calls.
 
+## Instance layout
+
 `Multimethod` and `TypeMap` keep every attribute a call touches in
 `__slots__`.
 `functools.update_wrapper` accesses the instance's `__dict__` (to copy the
@@ -51,15 +58,3 @@ lookups specialize for, costing 20-30% of a plain `dispatch` call. CPython
 3.13 keeps them inline anyway, so there slots don't help, and cost 3-5%: a
 method lookup on an instance whose `__dict__` slot is in use doesn't
 specialize. Slots make no difference on PyPy.
-
-## Benchmarks
-
-`tests/test_benchmarks.py` measures dispatch performance (via
-[pytest-benchmark](https://pytest-benchmark.readthedocs.io/)) rather than
-correctness, so it's excluded from the default test run (`addopts` in
-`pyproject.toml`) and from `tox`'s default envlist. Run it explicitly:
-
-```bash
-uv run pytest -m benchmark          # via the dev venv directly
-uv run tox -e benchmark             # via tox, in an isolated env
-```

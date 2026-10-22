@@ -18,7 +18,7 @@ Setup, CI and the docs build are described in `docs/development.md`
 uv sync --extra dev            # locked dev environment (add --extra docs for mkdocs)
 uv run pytest                  # tests (benchmarks excluded by default)
 uv run pytest tests/test_mmth.py::test_basic_dispatch
-uv run pytest -m benchmark     # benchmarks only, see docs/performance.md
+uv run pytest -m benchmark     # benchmarks only, see docs/development.md
 ruff check src/ tests/         # lint, including docstring format
 ruff format src/ tests/
 mypy src/ && pyright src/
@@ -78,7 +78,7 @@ These apply to comments and to private docstrings:
 - Write for any reader of the code: no history (past bugs, earlier
   designs, benchmark numbers) that only the commit history explains.
 - Don't repeat what's already in `docs/` or a commit message; point to the
-  doc instead if needed (e.g. "see docs/performance.md").
+  doc instead if needed (e.g. "see docs/explanation/performance.md").
 - In tests, don't restate the assertions or the test name.
 
 ```python
@@ -182,7 +182,12 @@ mmth/
 │   ├── test_functools_compat.py # single dispatch vs functools.singledispatch
 │   ├── test_benchmarks.py # pytest-benchmark (excluded by default)
 │   └── typing/           # type-checked only (mypy, pyright): how user code is typed
-├── docs/                 # MkDocs: specification, methods, typing, performance, reference, development
+├── docs/                 # MkDocs, following Diátaxis (no tutorials)
+│   ├── index.md          # Landing page: install, quick start, map of the docs
+│   ├── how-to/           # Task guides: register, ambiguities, methods, subclasses, functools
+│   ├── reference/        # dispatch rules, functools differences, typing, API (mkdocstrings)
+│   ├── explanation/      # design (the why of the rules), performance
+│   └── development.md    # Contributor guide: setup, CI, benchmarks, docs build
 ├── pyproject.toml, uv.lock, .python-version, tox.ini
 ├── mkdocs.yml, .readthedocs.yaml
 └── README.md             # Landing page; links to the hosted docs
@@ -192,16 +197,18 @@ mmth/
 
 ## Internals and What to Keep in Sync
 
-User-facing semantics are in `docs/specification.md` (syntax, dispatch
-algorithm, errors), `docs/methods.md` (`dispatchmethod`, `inherit()`) and
-`docs/typing.md`. Implementation notes:
+User-facing semantics are in `docs/reference/dispatch.md` (syntax, dispatch
+algorithm, methods and `inherit()`, errors) and `docs/reference/typing.md`.
+Keep the Diátaxis split when editing `docs/`: rules go in `reference/`,
+task-oriented examples in `how-to/`, and rationale in `explanation/`; each
+fact lives in one place, linked from the others. Implementation notes:
 
 - **Table and lookup:** each `Multimethod` keeps its implementations in a
   `TypeMap` (a mutable mapping by exact signature) whose `lookup()` finds
   the exact or most specific match and memoizes it by argument types,
   invalidated on any change. That cascades to `inherit()` descendants,
   whose `ChainTypeMap` looks among `parent | child`. See
-  docs/performance.md.
+  docs/explanation/performance.md.
 - **Default and arity:** the default is registered for `object` at every
   required positional parameter, ignoring its annotations, as in
   `functools.singledispatch`; it's an ordinary table entry. That count is
@@ -214,14 +221,14 @@ algorithm, errors), `docs/methods.md` (`dispatchmethod`, `inherit()`) and
   via `__set_name__`.
 - **functools compatibility:** with one dispatched argument, behaviour
   matches `functools.singledispatch`/`singledispatchmethod` except where
-  docs/specification.md ("Differences from `functools.singledispatch`")
-  says otherwise. `tests/test_functools_compat.py` checks this against
-  functools itself; keep it in sync with any new single-dispatch behaviour.
+  docs/reference/functools.md says otherwise.
+  `tests/test_functools_compat.py` checks this against functools itself;
+  keep it in sync with any new single-dispatch behaviour.
 - **Static typing:** `Multimethod[P, R]` is generic over the default's
   signature, so calls are checked against it, and implementations must
   return `R`. `dispatchmethod` is typed as `_Method` (type checkers only)
   to bind `self`. With explicit types, `register(T1, T2)` returns
   `_Register` (also type checkers only), which checks that both the
   implementation and the default accept those types. `tests/typing/` covers
-  this; keep it and docs/typing.md in sync with any change to the public
-  signatures.
+  this; keep it and docs/reference/typing.md in sync with any change to the
+  public signatures.

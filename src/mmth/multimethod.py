@@ -286,7 +286,7 @@ class Multimethod(Generic[_P, _R]):
     """
 
     # Slots keep calls fast even though update_wrapper accesses `__dict__`
-    # (see docs/performance.md).
+    # (see docs/explanation/performance.md).
     __slots__ = (
         "_registry",
         "_arity",
@@ -758,7 +758,7 @@ class Multimethod(Generic[_P, _R]):
 
         It dispatches on `base | sub` registrations: its own replace those
         for the same types, and the most specific of all the others wins
-        (see docs/methods.md):
+        (see docs/how-to/subclasses.md):
 
             class Sub(Base):
                 visit = Base.visit.inherit()
@@ -882,7 +882,7 @@ class Multimethod(Generic[_P, _R]):
     def __call__(self, *args: _P.args, **kwargs: _P.kwargs) -> _R:
         """Call the implementation chosen by the arguments' types."""
         # Fast paths for one or two dispatched arguments (see
-        # docs/performance.md). `__class__`, not `type()`, so proxies like
+        # docs/explanation/performance.md). `__class__`, not `type()`, so proxies like
         # `Mock(spec=cls)` dispatch as that class.
         key: type | tuple[type, ...]
         skip = self._skip
