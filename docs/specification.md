@@ -223,8 +223,9 @@ like `functools.singledispatch` and `functools.singledispatchmethod`, except:
   an instance of, so an implementation registered for `Any` never runs.
 - **Looking a `dispatchmethod` up on the class**: `Class.method(obj, arg)`
   dispatches on `arg`, skipping `obj` as it would `self`, while functools
-  dispatches on `obj`. So a `classmethod`/`staticmethod` implementation of an
-  ordinary `dispatchmethod` can only be called through an instance; a
+  dispatches on `obj` before Python 3.15 (from 3.15, it matches mmth). So
+  a `classmethod`/`staticmethod` implementation of an ordinary
+  `dispatchmethod` can only be called through an instance; a
   `dispatchmethod` that is itself a `classmethod`/`staticmethod` works
   through either, as in functools.
 - **`register(Type, SomeClass)` reads the class as a type**, as it does

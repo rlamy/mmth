@@ -8,6 +8,7 @@ see `test_*_differs_from_functools` below and docs/specification.md.
 import abc
 import functools
 import inspect
+import sys
 import warnings
 from typing import Any, Optional, Union
 from unittest import mock
@@ -351,8 +352,8 @@ def test_default_annotations_are_ignored():
 
 
 def test_dispatchmethod_class_access_differs_from_functools():
-    # looked up on the class, functools dispatches on the first argument
-    # given, i.e. the instance; mmth skips it, as it would `self`
+    # looked up on the class, mmth skips the instance, as it would `self`;
+    # functools dispatches on it before Python 3.15 (GH-143535)
     def build(decorator):
         class K:
             @decorator
@@ -366,7 +367,8 @@ def test_dispatchmethod_class_access_differs_from_functools():
         return K
 
     reference, cls = _both_methods(build)
-    assert reference.m(reference(), 1) == "default"
+    expected = "int" if sys.version_info >= (3, 15) else "default"
+    assert reference.m(reference(), 1) == expected
     assert cls.m(cls(), 1) == "int"
 
 
