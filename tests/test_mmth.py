@@ -492,6 +492,39 @@ def test_signature_is_the_default_s_else_any_arguments():
     assert inspect.signature(bare.inherit()) == inspect.signature(bare)
 
 
+def test_stub_declares_a_multimethod_without_a_default():
+    @dispatch(stub=True)
+    def area(shape, /, scale=1) -> float:
+        """Return the area of `shape`."""
+        raise AssertionError("stub called")
+
+    assert area.registry == {}
+    assert (area.__name__, area.__doc__) == ("area", "Return the area of `shape`.")
+    assert str(inspect.signature(area)) == "(shape, /, scale=1) -> float"
+    area.register(int)(lambda side, scale=1: side * side * scale)
+    assert area(2, 3) == 12
+    with pytest.raises(NoMatchError, match=r"area\(str\) matches no implementation"):
+        area("square")
+
+
+def test_stub_names_the_arguments_a_call_can_pass_by_keyword():
+    @dispatch(stub=True)
+    def f(x, y): ...
+
+    f.register(int, str)(lambda a, b: (a, b))
+    assert f(y="a", x=1) == (1, "a")
+
+
+def test_stub_takes_an_arity():
+    @dispatch(stub=True, arity=2)
+    def f(*args): ...
+
+    f.register(int, int)(lambda *args: args)
+    assert f(1, 2, 3) == (1, 2, 3)
+    with pytest.raises(TypeError, match="needs a function"):
+        Multimethod(stub=True, arity=1)
+
+
 def test_multimethod_needs_a_default_or_an_arity():
     with pytest.raises(TypeError, match="needs a default function or an arity"):
         Multimethod()

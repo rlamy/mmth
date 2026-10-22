@@ -108,3 +108,18 @@ def test_single_dispatch_functools_style() -> None:
     assert_type(describe.dispatch(Dog), Callable[..., str])
     assert_type(describe[Dog], Callable[..., str])
     assert_type(describe.detect_ambiguities(), list[AmbiguousMatchError])
+
+
+# mypy takes a `...` body for a missing return, as in any other function.
+@dispatch(stub=True)
+def speak(a: Animal) -> str: ...  # type: ignore[empty-body]
+
+
+@speak.register
+def _(a: Dog) -> str:
+    return "woof"
+
+
+def test_calls_are_typed_by_a_stub() -> None:
+    assert_type(speak(Dog()), str)
+    speak(1)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]

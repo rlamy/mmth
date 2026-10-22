@@ -20,8 +20,8 @@ them.
 A call can also pass dispatched arguments by keyword, by the default's
 parameter names: after `def f(x, y)`, `f(y=1, x=2)` is `f(2, 1)`. The
 implementation gets them positionally, whatever its own parameter names.
-That excludes positional-only parameters, and a multimethod without a
-default (`Multimethod(arity=n)`) takes them positionally only.
+That excludes positional-only parameters, and a multimethod created with
+no function at all (`Multimethod(arity=n)`) takes them positionally only.
 The multimethod takes on the default's `__name__`, `__doc__`, `__wrapped__`,
 etc., as with `functools.wraps`.
 
@@ -32,6 +32,21 @@ method). It's required for a default that takes `*args`, or that has no
 signature to read (whether builtins like `max` do depends on the Python
 implementation): rather than guess, they raise `TypeError`. Without it,
 `@dispatch()` is just `@dispatch`.
+
+For a multimethod without a default, declare it with a **stub**:
+
+```python
+@dispatch(stub=True)
+def area(shape: Shape, /, *, units: str = "m") -> float:
+    """Return the area of `shape`."""
+    ...
+```
+
+With `stub=True` (keyword-only, for `dispatch` and `dispatchmethod`), the
+function is never registered or called: it gives the multimethod its name,
+docstring, signature, arity and parameter names, as a default would, and
+its type (see [typing](typing.md)), but its `registry` starts empty, so a
+call matching no implementation raises `NoMatchError`.
 
 ### 2. Register an Implementation (Main Syntax)
 
@@ -111,7 +126,7 @@ When `function_name(arg1, arg2, ...)` is called:
 
 5. **No match**: if no registered signature matches → raise `NoMatchError`.
    The default's `(object, ...)` matches any call, so this only happens
-   without one, as for `Multimethod(arity=n)`
+   without one, as for a stub or `Multimethod(arity=n)`
 
 ### Registration Methods
 
@@ -139,7 +154,7 @@ Where replacing is intended, silence it with the `warnings` filters (see
 - **Single type shorthand**: `func[int]` is equivalent to `func[(int,)]`
 - **One arity**: every signature has the multimethod's arity, as many types
   as the default has required positional parameters (or
-  `Multimethod(arity=n)`, required without a default); registering another
+  `Multimethod(arity=n)`, required with no function); registering another
   length raises `TypeError`, as does registering, for explicit types, an
   implementation with too few positional parameters to take them (past
   `self`/`cls`, and without `*args`); a call with fewer dispatched arguments,
@@ -361,15 +376,15 @@ def foo(a: int) -> int:
 foo[float]  # KeyError: 'No implementation registered for exactly foo(float)'
 
 # NoMatchError - no matching implementation
-bar = Multimethod(arity=1)
+@dispatch(stub=True)
+def bar(a: object) -> int: ...
 
 @bar.register(int)
 def _(a: int) -> int:
     return a * 2
 
 bar("str")
-# NoMatchError: Multimethod(str) matches no implementation; registered:
-# Multimethod(int)
+# NoMatchError: bar(str) matches no implementation; registered: bar(int)
 ```
 
 ## Design Decisions

@@ -299,6 +299,7 @@ class Multimethod(Generic[_P, _R]):
         func: None = None,
         *,
         arity: int | None = None,
+        stub: bool = False,
         _skip: int = 0,
         _binds_class: bool = False,
         _registry: TypeMap | None = None,
@@ -309,6 +310,7 @@ class Multimethod(Generic[_P, _R]):
         func: Callable[_P, _R],
         *,
         arity: int | None = None,
+        stub: bool = False,
         _skip: int = 0,
         _binds_class: bool = False,
         _registry: TypeMap | None = None,
@@ -318,6 +320,7 @@ class Multimethod(Generic[_P, _R]):
         func: Any = None,
         *,
         arity: int | None = None,
+        stub: bool = False,
         _skip: int = 0,
         _binds_class: bool = False,
         _registry: TypeMap | None = None,
@@ -334,8 +337,13 @@ class Multimethod(Generic[_P, _R]):
         and they're then passed on positionally. A call matching no
         registration raises `NoMatchError`. The underscored
         arguments are internal, set by `dispatchmethod` and `inherit()`.
-        Raise `TypeError` for an `arity` that isn't an integer, and
-        `ValueError` for a negative one.
+
+        With `stub=True`, `func` is never registered or called, and only
+        gives the multimethod its name, docstring, signature and arity, as a
+        default would.
+
+        Raise `TypeError` for an `arity` that isn't an integer or for
+        `stub=True` without `func`, and `ValueError` for a negative `arity`.
         """
         if arity is not None:
             try:
@@ -349,6 +357,8 @@ class Multimethod(Generic[_P, _R]):
         self._adapted: dict[Any, Any] = {}
         self._keywords: tuple[str | None, ...] = ()
         if func is None:
+            if stub:
+                raise TypeError("Multimethod(stub=True) needs a function")
             if _registry is None:
                 if arity is None:
                     raise TypeError(
@@ -365,7 +375,9 @@ class Multimethod(Generic[_P, _R]):
         self.__isabstractmethod__ = getattr(func, "__isabstractmethod__", False)
         if arity is None:
             arity = self._infer_arity(func)
-        self._registry = TypeMap({(object,) * arity: self._callable(func)})
+        self._registry = TypeMap(arity=arity)
+        if not stub:
+            self._registry[(object,) * arity] = self._callable(func)
         self._arity = arity
         self._keywords = self._keyword_names(func)
 
@@ -1091,13 +1103,13 @@ def inherit() -> "_Method[Any, ..., Any]":
 
 @overload
 def dispatch(
-    func: Callable[_P, _R], *, arity: int | None = None
+    func: Callable[_P, _R], *, arity: int | None = None, stub: bool = False
 ) -> Multimethod[_P, _R]: ...
 @overload
 def dispatch(
-    *, arity: int | None = None
+    *, arity: int | None = None, stub: bool = False
 ) -> Callable[[Callable[_P, _R]], Multimethod[_P, _R]]: ...
-def dispatch(func: Any = None, *, arity: int | None = None) -> Any:
+def dispatch(func: Any = None, *, arity: int | None = None, stub: bool = False) -> Any:
     """Turn a function into a multimethod, with it as the default.
 
     The default implementation is registered for `object` at every required
@@ -1110,31 +1122,41 @@ def dispatch(func: Any = None, *, arity: int | None = None) -> Any:
     `dispatch(func, arity=n)`, or as `@dispatch(arity=n)`. It's required if
     the default takes `*args` or has no signature to read, rather than guess.
     `@dispatch()` is the same as `@dispatch`.
+
+    With `@dispatch(stub=True)`, the function is a stub, never registered
+    or called: it only declares the multimethod's name, docstring, signature
+    and arity, so that a call matching no implementation raises
+    `NoMatchError`.
     """
     if func is None:
-        return lambda func: dispatch(func, arity=arity)
+        return lambda func: dispatch(func, arity=arity, stub=stub)
     if not _is_function(func):
         raise TypeError(f"dispatch() expected a function, got {func!r}")
-    return Multimethod(func, arity=arity)
+    return Multimethod(func, arity=arity, stub=stub)
 
 
 @overload
 def dispatchmethod(
-    func: Callable[Concatenate[_S, _P], _R], *, arity: int | None = None
+    func: Callable[Concatenate[_S, _P], _R],
+    *,
+    arity: int | None = None,
+    stub: bool = False,
 ) -> "_Method[_S, _P, _R]": ...
 @overload
 def dispatchmethod(
-    *, arity: int | None = None
+    *, arity: int | None = None, stub: bool = False
 ) -> Callable[[Callable[Concatenate[_S, _P], _R]], "_Method[_S, _P, _R]"]: ...
-def dispatchmethod(func: Any = None, *, arity: int | None = None) -> Any:
+def dispatchmethod(
+    func: Any = None, *, arity: int | None = None, stub: bool = False
+) -> Any:
     """Turn a method into a multimethod, as `dispatch` does a function.
 
     `self` is bound automatically via the descriptor protocol and excluded
     from dispatch, so `.register(*types)` only lists the types of the
-    remaining arguments, and `arity` doesn't count it either (pass it as with
-    `dispatch`). Either the method itself or any registered implementation
-    can also be a `classmethod` or `staticmethod` (applied *below* the
-    decorator).
+    remaining arguments, and `arity` doesn't count it either (pass it, and
+    `stub`, as with `dispatch`). Either the method itself or any registered
+    implementation can also be a `classmethod` or `staticmethod` (applied
+    *below* the decorator).
 
     A subclass can replace a single implementation for itself, without
     touching the base class, via `inherit()` (see `inherit` and
@@ -1156,11 +1178,15 @@ def dispatchmethod(func: Any = None, *, arity: int | None = None) -> Any:
     ```
     """
     if func is None:
-        return lambda func: dispatchmethod(func, arity=arity)
+        return lambda func: dispatchmethod(func, arity=arity, stub=stub)
     if not _is_function(func):
         raise TypeError(f"dispatchmethod() expected a function, got {func!r}")
     if isinstance(func, staticmethod):
-        return Multimethod(func, arity=arity)
+        return Multimethod(func, arity=arity, stub=stub)
     return Multimethod(
-        func, arity=arity, _skip=1, _binds_class=isinstance(func, classmethod)
+        func,
+        arity=arity,
+        stub=stub,
+        _skip=1,
+        _binds_class=isinstance(func, classmethod),
     )

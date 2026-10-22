@@ -6,6 +6,7 @@ import pytest
 from mmth import (
     AmbiguousMatchError,
     Multimethod,
+    NoMatchError,
     RedefinitionWarning,
     dispatchmethod,
     inherit,
@@ -161,6 +162,30 @@ def test_dispatchmethod_takes_an_arity():
 def test_dispatchmethod_rejects_non_callable():
     with pytest.raises(TypeError):
         dispatchmethod(42)
+
+
+def test_dispatchmethod_stub_binds_self_and_is_inherited():
+    class Evaluator:
+        @dispatchmethod(stub=True)
+        def visit(self, node: Node) -> int: ...
+
+        @visit.register(Num)
+        def _(self, node):
+            return node.value
+
+    class Doubling(Evaluator):
+        visit = inherit()
+
+        @visit.register(Add)
+        def _(self, node):
+            return 2 * (self.visit(node.left) + self.visit(node.right))
+
+    assert Evaluator().visit(Num(1)) == 1
+    assert Doubling().visit(Add(Num(1), Num(2))) == 6
+    with pytest.raises(NoMatchError, match=r"Evaluator.visit\(Add\) matches"):
+        Evaluator().visit(Add(Num(1), Num(2)))
+    with pytest.raises(NoMatchError, match=r"Doubling.visit\(Node\) matches"):
+        Doubling().visit(Node())
 
 
 def test_dispatchmethod_inherit_replaces_one_implementation():

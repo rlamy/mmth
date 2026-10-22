@@ -129,8 +129,13 @@ from the base class, and so checks both).
 
 ## Limitations
 
-- **No default**: a multimethod created as `Multimethod(arity=n)` has no
-  signature to check calls against, so they're untyped.
+- **No function**: a multimethod created as `Multimethod(arity=n)` has no
+  signature to check calls against, so they're untyped. Declare it with
+  `@dispatch(stub=True)` instead, which types it as a default would.
+- **Stub bodies**: mypy reports a stub whose body is only `...` (and a
+  docstring) as missing its return statement (`empty-body`), as for any
+  function; pyright doesn't. Silence it with `# type: ignore[empty-body]`,
+  or give the stub a body that raises.
 - **Parameters not dispatched on**: arguments past the multimethod's
   arity, and those passed by keyword, are passed on to the implementation,
   but it isn't checked to take the default's other parameters, or by the

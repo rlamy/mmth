@@ -207,7 +207,8 @@ algorithm, errors), `docs/methods.md` (`dispatchmethod`, `inherit()`) and
   `functools.singledispatch`; it's an ordinary table entry. That count is
   the arity: calls dispatch on their first `arity` positional arguments
   and pass any others on (`*args` defaults need an explicit
-  `@dispatch(arity=n)`).
+  `@dispatch(arity=n)`). A `stub=True` function sets all that up the same
+  way, but isn't registered.
 - **Methods:** `dispatchmethod` binds `self` via the descriptor protocol
   and excludes it from dispatch. `inherit()` finds the base multimethod
   via `__set_name__`.
