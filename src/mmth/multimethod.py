@@ -934,6 +934,15 @@ class Multimethod(Generic[_P, _R]):
             self.__name__ = name
             self.__qualname__ = f"{owner.__qualname__}.{name}"
 
+    def __repr__(self) -> str:
+        """Return `<multimethod module.qualname>`, or its address if unnamed."""
+        names = vars(self)
+        name = names.get("__qualname__", names.get("__name__"))
+        if name is None:
+            return f"<multimethod at {id(self):#x}>"
+        module = names.get("__module__")
+        return f"<multimethod {module}.{name}>" if module else f"<multimethod {name}>"
+
     def __reduce__(self) -> str:
         """Pickle by reference, as a function is: by module and qualname.
 

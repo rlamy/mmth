@@ -538,6 +538,19 @@ def test_docstring_is_the_default_s_else_none():
     assert bare.__doc__ is bare.inherit().__doc__ is None
 
 
+def test_repr_names_the_multimethod():
+    @dispatch
+    def f(a): ...
+
+    class C:
+        g = Multimethod(arity=1)
+
+    bare = Multimethod(arity=1)
+    assert repr(f) == f"<multimethod {__name__}.{f.__qualname__}>"
+    assert repr(C.g) == f"<multimethod {__name__}.{C.__qualname__}.g>"
+    assert repr(bare) == f"<multimethod at {id(bare):#x}>"
+
+
 def test_multimethod_needs_a_default_or_an_arity():
     with pytest.raises(TypeError, match="needs a default function or an arity"):
         Multimethod()
