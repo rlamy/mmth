@@ -15,7 +15,7 @@ versions. Re-run `uv lock` and commit the updated `uv.lock` whenever
 
 ## Running CI checks locally
 
-CI runs the test suite on Python 3.11-3.14 and PyPy 3.11, plus lint,
+CI runs the test suite on Python 3.11-3.14 and PyPy 3.11-3.12, plus lint,
 typing and docs jobs, via [tox](https://tox.wiki) (using the [tox-uv](https://github.com/tox-dev/tox-uv)
 plugin, so tox itself uses uv to create envs and can fetch missing
 interpreters). To run the exact same checks locally:

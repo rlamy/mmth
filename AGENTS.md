@@ -25,7 +25,7 @@ mypy src/ && pyright src/
 mypy --strict tests/typing && pyright -p tests/typing
 
 uv run tox                     # everything CI runs: every interpreter + lint, typing, docs
-uv run tox -e py313            # one interpreter (py311-py314, pypy311)
+uv run tox -e py313            # one interpreter (py311-py314, pypy311, pypy312)
 uv run tox -e lint             # or: typing, docs, benchmark
 ```
 

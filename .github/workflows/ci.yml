@@ -22,6 +22,8 @@ jobs:
             tox-env: py314
           - python-version: "pypy3.11"
             tox-env: pypy311
+          - python-version: "pypy3.12"
+            tox-env: pypy312
     steps:
       - uses: actions/checkout@v4
 
