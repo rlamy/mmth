@@ -10,6 +10,9 @@ from typing import Any, Self, Union, get_args, get_origin
 
 _Signature = tuple[type, ...]
 
+# Default for `TypeMap.lookup()`'s `default`, so that `None` can be passed.
+_MISSING: Any = object()
+
 
 def _type_name(t: Any) -> str:
     """Return how error messages show type annotation `t`, e.g. a class's qualname.
@@ -309,14 +312,15 @@ class TypeMap(MutableMapping[_Signature, Any]):
                     found.setdefault(candidates, e)
         return list(found.values())
 
-    def lookup(self, key: type | _Signature) -> Any:
+    def lookup(self, key: type | _Signature, default: Any = _MISSING) -> Any:
         """Return the value for the most specific key the types `key` match.
 
         `key` is a tuple of types, or a bare type for a one-element tuple.
-        Raise `TypeError` if `key` doesn't have `arity` types, `NoMatchError`
-        if no key matches, and `AmbiguousMatchError` if no single matching key
-        is more specific than all the others. The result is cached, per
-        `key`, until this type map changes.
+        Raise `TypeError` if `key` doesn't have `arity` types,
+        `AmbiguousMatchError` if no single matching key is more specific than
+        all the others, and `NoMatchError` if no key matches, unless
+        `default` is given, as by `dict.get()`: then return it. A value found
+        is cached, per `key`, until this type map changes.
         """
         if self._abc_token is not None and self._abc_token != get_cache_token():
             self._abc_token = get_cache_token()
@@ -325,7 +329,12 @@ class TypeMap(MutableMapping[_Signature, Any]):
             return self._cache[key]
         except KeyError:
             pass
-        value = self._miss(key if isinstance(key, tuple) else (key,))
+        try:
+            value = self._miss(key if isinstance(key, tuple) else (key,))
+        except NoMatchError:
+            if default is _MISSING:
+                raise
+            return default
         self._cache[key] = value
         return value
 

@@ -46,6 +46,19 @@ def test_lookup_finds_exact_then_most_specific():
         tm.lookup(int)
 
 
+def test_lookup_returns_the_default_only_when_no_key_matches():
+    tm = TypeMap({(Dog,): "dog", (Pet,): "pet"})
+    assert tm.lookup(int, None) is None
+    assert tm.lookup(int, default="none") == "none"
+    assert tm.lookup(Dog, None) == "dog"
+    with pytest.raises(AmbiguousMatchError):
+        tm.lookup(PetDog, None)
+    with pytest.raises(TypeError, match="Expected 1 type, got 2"):
+        tm.lookup((Dog, Dog), None)
+    tm[int,] = "int"
+    assert tm.lookup(int, None) == "int"
+
+
 def test_arity_is_given_or_inferred_from_the_table():
     for table in [None, {}]:
         with pytest.raises(TypeError, match="needs an arity"):

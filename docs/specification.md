@@ -184,7 +184,9 @@ unpickles as itself.
 Underneath, the implementations live in a `mmth.TypeMap`, a mutable mapping
 of exactly the signatures registered on it (so `del typemap[sig]`
 unregisters `sig`), whose `lookup(types)` returns, cached, what a call
-with arguments of `types` would run: exact match, else most specialized.
+with arguments of `types` would run: exact match, else most specialized
+(`lookup(types, default)` returns `default` instead of raising
+`NoMatchError`, as `dict.get()` does).
 It's built from an initial table, e.g. `TypeMap({(int,): f})`, whose keys
 set its `arity`, the length all its keys share (`TypeMap(arity=n)` starts
 one empty). An `inherit()` multimethod keeps them in a
