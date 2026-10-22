@@ -374,6 +374,8 @@ class Multimethod(Generic[_P, _R]):
                         "Multimethod() needs a default function or an arity"
                     )
                 _registry = TypeMap(arity=arity)
+                # Rather than the class's, as a function without one has.
+                self.__doc__ = None
                 # Without a default to unwrap to, `inspect.signature` takes
                 # this for a builtin, as it has a `__get__`, and fails.
                 self.__signature__ = inspect.signature(self.__call__)

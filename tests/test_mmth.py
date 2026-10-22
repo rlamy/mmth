@@ -528,6 +528,16 @@ def test_stub_takes_an_arity():
         Multimethod(stub=True, arity=1)
 
 
+def test_docstring_is_the_default_s_else_none():
+    @dispatch
+    def f(a):
+        """Doc."""
+
+    bare = Multimethod(arity=1)
+    assert f.__doc__ == f.inherit().__doc__ == "Doc."
+    assert bare.__doc__ is bare.inherit().__doc__ is None
+
+
 def test_multimethod_needs_a_default_or_an_arity():
     with pytest.raises(TypeError, match="needs a default function or an arity"):
         Multimethod()
