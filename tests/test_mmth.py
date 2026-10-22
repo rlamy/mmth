@@ -6,13 +6,16 @@ import subprocess
 import sys
 import warnings
 from collections.abc import Iterable, Sized
+from types import NoneType
 from typing import (
     Annotated,
     Any,
     Callable,
+    Generic,
     List,
     Literal,
     Optional,
+    Protocol,
     TypeVar,
     Union,
 )
@@ -20,7 +23,7 @@ from typing import (
 import pytest
 
 from mmth import AmbiguousMatchError, NoMatchError, RedefinitionWarning, dispatch
-from mmth.multimethod import Multimethod
+from mmth.multimethod import Multimethod, _classes, _is_plain_class
 
 
 def test_basic_dispatch():
@@ -1048,6 +1051,21 @@ def test_dispatch_method_accepts_annotations():
     assert f.dispatch(Annotated[bool, "m"])(True) == "int"
     with pytest.raises(TypeError, match="one class per argument"):
         f.dispatch(Optional[int])
+    assert f.dispatch(Any) is f.__wrapped__
+    with pytest.raises(TypeError, match="expected types, got <class 'typing.Generic'>"):
+        f.dispatch(Generic)
+
+
+def test_plain_classes_are_the_classes_annotations_stand_for():
+    T = TypeVar("T")
+
+    class Box(Generic[T]):
+        pass
+
+    annotations = [int, NoneType, Sized, Box, Protocol, Any, Generic, None]
+    annotations += [Box[int], list[int], List[int], int | str, T, Literal[1]]
+    for t in annotations:
+        assert _is_plain_class(t) == (_classes(t) == (t,)), t
 
 
 def test_dispatch_method_errors_match_a_calls():

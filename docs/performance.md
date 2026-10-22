@@ -36,6 +36,12 @@ PyPy). It also builds a two-type key directly, which costs about 40% less
 than the generator expression for a two-argument call; three or more
 arguments take the general path.
 
+`dispatch(*types)` shares the call's cache, but reading `types` as type
+annotations (unions, `Optional`, `Annotated`, ...) costs several times a
+cached call. Given only plain classes, as when an implementation falls back
+on a more general one with `f.dispatch(Base)(...)`, it skips that and goes
+straight to the cache, costing about two calls.
+
 `Multimethod` and `TypeMap` keep every attribute a call touches in
 `__slots__`.
 `functools.update_wrapper` accesses the instance's `__dict__` (to copy the

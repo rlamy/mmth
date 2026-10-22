@@ -100,6 +100,15 @@ def _classes(t: Any) -> tuple[type, ...] | None:
     return None
 
 
+def _is_plain_class(t: Any) -> bool:
+    """Return whether `t` is a class that `_classes()` returns as is.
+
+    Quicker than `_classes()`: `Any` and `Generic` are the only classes it
+    reads otherwise.
+    """
+    return isinstance(t, type) and t is not Any and t is not Generic
+
+
 # What evaluating an annotation that doesn't resolve (yet) raises.
 _UNRESOLVED = (NameError, AttributeError, SyntaxError)
 
@@ -825,20 +834,27 @@ class Multimethod(Generic[_P, _R]):
 
     def dispatch(self, *types: _TypeSpec) -> Callable[..., _R]:
         """Return the implementation a call with arguments of `types` would run."""
-        types, _ = _parse_decorator_args("dispatch()", types)
-        if len(types) != self._arity:
-            raise TypeError(
-                f"dispatch() expected {_count(self._arity, 'type')}, got "
-                f"{len(types)}: {_format_types(types)}"
-            )
-        sigs = _expand(types)
-        if len(sigs) != 1:
-            raise TypeError(
-                f"dispatch() expected one class per argument, got "
-                f"{_format_types(types)}"
-            )
+        # Fast path for plain classes, as when falling back on a more
+        # general implementation.
+        sig: tuple[type, ...]
+        if len(types) == self._arity and all(map(_is_plain_class, types)):
+            sig = cast(tuple[type, ...], types)
+        else:
+            types, _ = _parse_decorator_args("dispatch()", types)
+            if len(types) != self._arity:
+                raise TypeError(
+                    f"dispatch() expected {_count(self._arity, 'type')}, got "
+                    f"{len(types)}: {_format_types(types)}"
+                )
+            sigs = _expand(types)
+            if len(sigs) != 1:
+                raise TypeError(
+                    f"dispatch() expected one class per argument, got "
+                    f"{_format_types(types)}"
+                )
+            sig = sigs[0]
         try:
-            return self._registry.lookup(sigs[0])
+            return self._registry.lookup(sig)
         except TypeError as e:
             error = self._lookup_error(e)
             if error is None:
